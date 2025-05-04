@@ -133,6 +133,16 @@ adrp    x8, fp
 ldr     x8, [x8, :lo12:fp]
 ```
 
+In LLVM, the `VariantKind` information is incoded as `AArch64MCExpr` (derived from `MCTargetExpr`), different from most other targets.
+```
+// llvm/lib/Target/AArch64/AArch64MCInstLower.cpp
+  Expr = AArch64MCExpr::create(Expr, RefKind, Ctx);
+// llvm/lib/Target/AArch64/AsmParser/AArch64AsmParser.cpp
+ImmVal = AArch64MCExpr::create(ImmVal, RefKind, getContext());
+```
+
+`MCValue::RefKind` is introduced in 2014 to encode the VariantKind when a `MCExpr` is evaluated to a `MCValue`.
+
 ### RISC-V
 
 The modifier syntax is copied from MIPS.
@@ -194,9 +204,12 @@ In the binutils-gdb repository, `opcodes/` contains information on how to assemb
 
 `gas/read.c:potable` defines directives available to all targets. `gcc/config/obj-elf.c:elf_pseudo_table` defines ELF-specific directives. An architecture can define its own directives.
 
+`.equiv` equates a symbol to an expression and reports an error if the symbol was already defined.
+
 `.set sym, expr` (synonymous with `.equ sym, expr` and `sym = expr`) equates a symbol to an expression. This can either define a symbol or redirect an undefined symbol to another symbol.
 The expression can use forward reference, namely symbols that are not defined yet.
 The defined symbols have the `STB_LOCAL` binding by default, and can be changed with `.globl` or `.weak` directive.
+`S_SET_VOLATILE` is called, so the defined symbol can be redefined.
 
 `.eqv sym, expr` calls `S_SET_FORWARD_REF` on the symbol. The evaluation (including DOT) is postponed to the use site.
 
@@ -208,7 +221,7 @@ For example, below we define two aliases for the symbol `_start`, where `backwar
 .globl backward
 ```
 
-`.set` can redirect an undefined symbol to another symbol.
+`.set` can redirect an undefined symbol to another symbol. (`write.c:symbol_equated_reloc_p`)
 ```asm
 call memcpy@plt
 
@@ -229,9 +242,9 @@ If `-g` is specified and none of `.file` and `.loc` is used, gas synthesizes deb
 GNU Assembler implements "INDEFINITE REPEAT BLOCK DIRECTIVES: .IRP AND .IRPC" from MACRO-11.
 ```asm
 .rept 3
-  ret
+  .long \+
 .endr
-# => ret; ret; ret
+# => .long 0; .long 1; .long 2
 
 .irpc i,012
   movq $\i, %rax
@@ -244,7 +257,7 @@ GNU Assembler implements "INDEFINITE REPEAT BLOCK DIRECTIVES: .IRP AND .IRPC" fr
 # => movq %rax, %rax; movq %rbx, %rax; movq %rcx, %rax
 ```
 
-Unfortunately none of the directives can implement `for (int i = 0; i < 20; i++)`.
+Before June 2024, there was no good way to implement `for (int i = 0; i < 20; i++)` (<http://sourceware.org/PR31752>).
 `.irpc i,0123456789` gives just 10 iterations while `.irp i,0,1,2,3,4,5,...` is tedious and error-prone.
 
 That said, we can define a macro that expands to a sequence of strings: `0, (0+1), ((0+1)+1), (((0+1)+1)+1), ...`
@@ -416,6 +429,7 @@ In the data flow pipeline for compilation `C/C++ code -> LLVM IR -> MachineInstr
 
 In the case of an assembly input file, LLVM creates an `MCAsmParser` object (LLVMMCParser) and a target-specific `MCTargetAsmParser` object.
 The `MCAsmParser` is responsible for tokenizing the input, parsing assembler directives, and invoking the `MCTargetAsmParser` to parse an instruction.
+Object file specific parsers (e.g. `ELFAsmParser`) and architecture-specific parsers (e.g. `X86AsmParser`) can extend `MCAsmParser` by overridding `MCAsmParserExtension` methods.
 Both the `MCAsmParser` and  `MCTargetAsmParser` objects can call `MCStreamer` API to emit assembly code or machine code.
 
 For an instruction parsed by the `MCTargetAsmParser`, if the streamer is an `MCAsmStreamer`, the `MCInst` will be pretty-printed by a target-specific `MCInstPrinter`.
@@ -527,6 +541,9 @@ There was a "fast path" (`if (AddrDelta->evaluateAsAbsolute(Res, getAssemblerPtr
 
 ### Symbol reassignment
 
+Symbol reassignment in LLVM integrated assembler has a pile of hacks (see `llvm/lib/MC/MCParser/AsmParser.cpp:parseAssignmentExpression`).
+Limited scenarios are supported (`llvm/test/MC/AsmParser/variables.s`).
+
 LLVM integrated assembler reports `error: invalid reassignment of non-absolute variable 'x'` for the test case on <https://sourceware.org/bugzilla/show_bug.cgi?id=288>.
 ```asm
 _start:
@@ -541,7 +558,7 @@ _start:
 
 In the Linux kernel, [powerpc/64/asm: Do not reassign labels](https://git.kernel.org/linus/d72c4a36d7ab560127885473a310ece28988b604) removed a reassignment pattern to allow LLVM integrated assembler.
 
-GNU assembler uses `symP->flags.resolving` to detect `symbol definition loop encountered at` errors.
+GNU Assembler uses `symP->flags.resolving` to detect `symbol definition loop encountered at` errors.
 The variable is primarily used by `symbol_clone_if_forward_ref` and `resolve_symbol_value`.
 
 ### Expression evaluation
@@ -554,6 +571,8 @@ Thomas G. Szymanski, _Assembling Code for Machines with Span-Dependent Instructi
 _AIX PS/2 and System/370 Programming Tools and Interfaces_ refers to the term and defines `.optim` and `.noopt`.
 There is no more information. It's possible that AIX PS/2 and System/370 only use .optim/.noopt for branches, a restricted form of the general span-dependent expressions.
 
+In LLVM, variable evaluation has a pipe of hacks. `isInSection` utilizes `isAbsolute`, which requires `MCExpr::findAssociatedFragment` for a variable.
+
 In GNU assembler, .optim/.noopt has been ignored for a long time (since 1992).
 
 https://reviews.llvm.org/D109109 `getSymbolOffsetImpl` is recursively called due to https://github.com/llvm/llvm-project/issues/19577
@@ -562,6 +581,25 @@ https://reviews.llvm.org/D109109 `getSymbolOffsetImpl` is recursively called due
 
 Apple cctools assembler was modified from binutils.
 It contains code not in upstream binutils, e.g. `.subsections_via_symbols`.
+
+Mach-O's subsection feature imposes restriction on label differences.
+In general, label differences that cross an atom symbol is not allowed as instruction operands.
+
+```asm
+La: nop
+Lb:
+
+a: nop
+b:
+
+add x0, x0, Lb-La  // ok
+add x0, x0, b-a    // rejected, different atoms
+```
+
+However, `.set` directives and variable assignments (`var = b-a;`) resolve label differences disregarding the atom restriction.
+
+In addition, the `.set` directive suppresses relocations (`SetDirectiveSuppressesReloc = true;`).
+`X86MCAsmInfoDarwin::X86MCAsmInfoDarwin` sets `DwarfFDESymbolsUseAbsDiff`
 
 ### Mach-O ` a = b + 4; .long a` hack
 

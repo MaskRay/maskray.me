@@ -4,11 +4,34 @@ author: MaskRay
 tags: [binutils,linker,windows]
 ---
 
+Updated in 2025-02.
+
 This article describes linker notes about Portable Executable (PE) and Common Object File Format (COFF) used on Windows and UEFI environments.
 
 In ELF, an object file can be a relocatable file, an executable file, or a shared object file.
 On Windows, the term "object file" usually refers to relocatable files like ELF.
 Such files use the Common Object File Format (COFF) while image files (e.g. executables and DLLs) use the Portable Executable (PE) format.
+
+## A look at linkers
+
+MSVC Linker is the reference linker on Windows.
+
+GNU ld supports Windows thanks to the MinGW effort.
+Here are some common BFD emulations for PE targets:
+
+* `i386pe`: For 32-bit Intel x86 architectures.
+* `i386pep`: For 64-bit Intel x86-64 architectures.
+* `arm64pe`: For 64-bit ARM (AArch64) architectures.
+
+For instance, you can use a command like `ld.bfd -m i386pep a.o b.o` to link two object files into a PE executable.
+Many options on Linux can also be used when targeting PE/COFF.
+
+The LLVM linker offers two modes of operation that are relevant to PE/COFF:
+
+* `lld-link`: In this mode, lld emulates the MSVC linker, making it a fast viable alternative.
+* `ld.lld`: When invoked with a PE emulation (like `-m i386pep`), lld emulates GNU ld. Code in `lld/MinGW` translates GNU ld options to link.exe options.
+
+GNU ld implements [relocatable linking](/blog/2022-11-21-relocatable-linking) that is not available in other linkers.
 
 ## Input files
 

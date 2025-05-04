@@ -768,7 +768,11 @@ Currently Android and OpenBSD targets default to `-femulated-tls` in Clang. See 
 
 ## C++ thread_local
 
-C++ thread_local adds additional features to `__thread`: dynamic initialization on first-use and destruction on thread exit.
+C++ thread_local adds additional features to `__thread`: dynamic initialization before first-use and destruction on thread exit.
+
+> [basic.stc.thread]: A variable with thread storage duration shall be initialized before its first odr-use and, if constructed, shall be destroyed on thread exit.
+
+The implementation chooses to initialize TLS lazily.
 If a thread_local variable needs dynamic initialization or has a non-trivial destructor, the compiler calls the TLS wrapper function (`_ZTW*`, in a COMDAT group) instead of referencing the variable directly.
 The TLS wrapper calls the TLS init function (`_ZTH*`, weak), which is an alias for `__tls_init`.
 `__tls_init` calls the constructors and registers the destructors with `__cxa_thread_atexit`.
@@ -1155,3 +1159,7 @@ eof
 ```sh
 bmake run && bmake CFLAGS=-O1 run
 ```
+
+## Misc
+
+On AArch32, many TLS code sequences need constant pool, making TLS incompatible with `-mexecute-only`.

@@ -4,7 +4,7 @@ author: MaskRay
 tags: [linker,llvm]
 ---
 
-Updated in 2023-09.
+Updated in 2025-02.
 
 In GNU ld, `-r` produces a relocatable object file. This is known as relocatable linking or partial linking.
 This mode suppresses many passes done for an executable or shared object output (in `-no-pie/-pie/-shared` modes).
@@ -166,6 +166,11 @@ This grouping effect may affect the output section size due to alignment padding
 
 ## Application
 
+### Alternative to a static library
+
+The total numbers of sections and symbols are smaller, making the relocatable smaller than the total size of input files.
+This makes relocatable linking an alternative to a static library at the expense of less effective garbage collectin.
+
 ### glibc
 
 glibc provides many crt1 files: `Scrt1.o, rcrt1.o, crt1.o, grcrt1.o, gcrt1.o`. These files share a lot of common code but have customization.
@@ -249,4 +254,17 @@ for i in "$@"; do
   fi
 done
 LD_PRELOAD=path/to/libmimalloc.so ~/Stable/bin/ld.lld --threads=8 "$@"
+```
+
+## Mach-O
+
+Apple ld also supports `-r`, which produces an object file of type `MH_OBJECT`.
+The feature is sometimes called "single-object prelink".
+
+You can specify `-exported_symbol` or `-exported_symbols_list` to make symbols private.
+
+```
+printf 'void foo(){} void bar(){}' | clang -c -xc - -o a.o
+ld -arch arm64 -r -exported_symbol bar a.o
+ld -arch arm64 -r -exported_symbols_list a.txt a.o
 ```

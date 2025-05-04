@@ -257,6 +257,7 @@ local0:
 
 For a label difference `A-B` in assembly, if A and B are separated by a linker-relaxable instruction, we should emit a pair of ADD/SUB relocations (e.g. `R_RISCV_ADD32`/`R_RISCV_SUB32`, `R_RISCV_ADD64`/`R_RISCV_SUB64`).
 (`R_RISCV_32_PCREL` can be used for certain 32-bit relocations, but GNU assembler only emits `R_RISCV_32_PCREL` for `.eh_frame`.)
+(In AVR, the [`R_AVR_DIFF{8,16,32}` relocations for AVR](https://sourceware.org/pipermail/binutils/2014-April/084624.html) are similar.)
 
 The assembler behavior is not well documented (<https://github.com/riscv-non-isa/riscv-asm-manual/issues/80>).
 Anyhow, let's see an example.

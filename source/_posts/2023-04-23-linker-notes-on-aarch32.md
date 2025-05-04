@@ -262,6 +262,12 @@ L1: add ip, ip, pc
 bx ip
 ```
 
+MOVT extracts the upper bits of a value and requires specific handling in both ELF and Mach-O formats, as they both utilize implicit addends.
+In ELF, it utilizes the REL relocation format. When the assembler processes the MOVT fixup, it produces two possible results (`ARMAsmBackend::adjustFixupValue`):
+
+* Resolved fixups: The assembler updates the relevant bits using `value >> 16`.
+* Unresolved fixups: The assembler creates a relocation based on the original value.
+
 ## `--fix-cortex-a8`
 
 This option enables a linker workaround for Arm Cortex-A8 Errata 657417.

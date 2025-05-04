@@ -129,6 +129,45 @@ GCC emits a special section to indicate the ABI for GDB.
 * 32-bit EABI: `.mdebug.eabi32`
 * 64-bit EABI: `.mdebug.eabi64`
 
+### MIPS16 and microMIPS
+
+In MIPS16 and microMIPS modes, text labels are marked with the `STO_MIPS_MIPS16` or `STO_MIPS_MICROMIPS` bit, and their addresses have bit 0 set.
+This affects how labels and their differences are handled in assembly code.
+
+Consider the following example:
+
+```asm
+B0 = .
+B1:
+  move    $25,$4
+C0 = .
+C1:
+  move    $25,$4
+.data
+.long C0-B0, C1-B0, C0-B1, C1-B1   // Output: 2, 3, 1, 2
+.long B0, B1, C0, C1               // Output: 0, 1, 2, 3
+```
+
+In the `.gcc_except_table` section, the call site table uses similar label differences to define code ranges. For example:
+
+```asm
+$LFB0 = .
+...
+$LEHB0 = .
+...
+$LEHE0 = .
+...
+$L3:
+
+        .uleb128 $LEHB0-$LFB0   // call site start, variable minus variable
+        .uleb128 $LEHE0-$LEHB0  // call site end, variable minus variable
+        .uleb128 $L3-$LFB0      // landing pad offset, label minus variable
+```
+
+These differences ensure exception handling, as documented in the GCC fix for MIPS16 EH issues ([[committed] Fix a lot of MIPS16 EH failures](https://gcc.gnu.org/pipermail/gcc-patches/2008-November/252316.html)).
+
+In LLVM, `MCAsmInfo::UseAssignmentForEHBegin` is [introduced](https://github.com/llvm/llvm-project/commit/f491704e2297e5986b0fe7277403e35ffabaaec4) to declare the function begin symbol as `$func_begin0 = .` instead of `$func_begin0:`.
+
 ## gp register
 
 In n32/n64 ABIs, $gp is callee-saved. This is unfortunate and often leads to more instructions compared with o32.
@@ -427,6 +466,14 @@ MIPS code was removed [starting since 2021-12](https://github.com/freebsd/freebs
 The entry point for an executable or shared object is `__start` instead of `_start`.
 
 `E_MIPS_*` macros are [considered deprecated](https://sourceware.org/pipermail/binutils/2023-August/128993.html).
+
+DWARF `.debug_*` sections have the `SHT_MIPS_DWARF` flag.
+
+`%` modifiers (like unary operators) can nest, which makes parsing difficult.
+LLVM integrated assembler parses these operators in the generic code (<https://reviews.llvm.org/D23110>), which is not good taste.
+```asm
+lui   $gp, %hi(%neg(%gp_rel(foo+4)))
+```
 
 The following script demonstrate that we can use a GCC cross compiler configured with 32-bit MIPS to build 64-bit object files.
 

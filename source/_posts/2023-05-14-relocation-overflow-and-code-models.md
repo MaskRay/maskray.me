@@ -4,6 +4,8 @@ author: MaskRay
 tags: [gcc,linker]
 ---
 
+Updated in 2025-05.
+
 When linking an oversized executable, it is possible to encounter errors such as ``relocation truncated to fit: R_X86_64_PC32 against `.text'`` (GNU ld) or `relocation R_X86_64_PC32 out of range` (ld.lld).
 These diagnostics are a result of the relocation overflow check, a feature in the linker.
 
@@ -345,9 +347,71 @@ add 9,9,3
 extsw 3,9
 ```
 
+Retrieval of the high bits of a symbol address can be achieved using the `R_PPC64_ADDR16_HIGHERA` (specifier `@highera`) and `R_PPC64_ADDR16_HIGHESTA` (specifier `@highesta`) relocation types, although these are not utilized by GCC.
+
 ## RISC-V code models
 
 See <https://github.com/riscv-non-isa/riscv-elf-psabi-doc/pull/388> for a proposal to add a large code model.
+
+## SPARC code models
+
+SPARC V9 introduced a 64-bit architecture for SPARC.
+_Oracle Solaris 64-bit Developer's Guide_ defines the SPARC V9 ABI code models.
+
+* abs32, absolute, low 32 bits of address space
+* abs44, absolute, low 44 bits of address space
+* abs64, absolute, anywhere
+* pic13, PIC, anywhere, GOT offsets are within a signed 13-bit integer (a relocation of type `R_SPARC_GOT13`)
+* pic32, PIC, anywhere, GOT offsets are within a signed 32-bit integer (relocation pair of type `R_SPARC_GOT22/R_SPARC_GOT10`)
+
+Note: Code size must not exceed 2 gigabytes for all models.
+GCC calls them medium code models.
+
+* Medium/Low, `-fno-pic -mcmodel=medlow`
+* Medium/Middle, `-fno-pic -mcmodel=medmid`
+* Medium/Anywhere, `-fno-pic -mcmodel=medany`
+* `-fpie` or `-fpic`
+* `-fPIE` or `-fPIC`
+
+Below are the models and their corresponding GCC code model names and options:
+
+GCC additionally defines a variant of medany for embedded systems where `%g4` points to the data segment base, `-mcmodel=embmedany`. See https://gcc.gnu.org/onlinedocs/gcc/SPARC-Options.html
+
+> The Medium/Anywhere code model for embedded systems: 64-bit addresses, the text and data segments must be less than 2GB in size, both starting anywhere in memory (determined at link time). The global register %g4 points to the base of the data segment. Programs are statically linked and PIC is not supported.
+
+```asm
+// -fno-pic
+sethi   %hi(a), %g1          # R_SPARC_HI22, (S + A) >> 10
+ldsw   [%g1+%lo(a)], %o0     # R_SPARC_LO10, (S + A) & 0x3ff
+
+// -fno-pic -mcmodel=medmid
+sethi   %h44(a), %g1         # R_SPARC_H44, (S + A) >> 22
+or      %g1, %m44(a), %g1    # R_SPARC_M44, ((S + A) >> 12) & 0x3ff
+sllx    %g1, 12, %g1
+ldsw   [%g1+%l44(a)], %o0    # R_SPARC_L44, (S + A) & 0xfff
+
+# -fno-pic -mcmodel=medany
+sethi   %hh(a), %g1          # R_SPARC_HH22, (S + A) >> 42
+sethi   %lm(a), %g2          # R_SPARC_LM22, (S + A) >> 10
+or      %g1, %hm(a), %g1     # R_SPARC_HM10, ((S + A) >> 32) & 0x3ff
+sllx    %g1, 32, %g1
+add     %g1, %g2, %g1
+ldsw   [%g1+%lo(a)], %o0     # R_SPARC_LO10, (S + A) & 0x3ff
+
+# -fPIC
+sethi %hi(_GLOBAL_OFFSET_TABLE_-4), %l7     # R_SPARC_HI22
+call __sparc_get_pc_thunk.l7
+add %l7, %lo(_GLOBAL_OFFSET_TABLE_+4), %l7  # R_SPARC_LO10
+
+sethi   %gdop_hix22(a), %g1                 # R_SPARC_GOTDATA_OP_HIX22, (G >> 10) ^ (G >> 31)
+xor     %g1, %gdop_lox10(a), %g1            # R_SPARC_GOTDATA_OP_LOX10, (G & 0x3ff) | ((G >> 31) & 0x1c00)
+ldx     [%l7 + %g1], %l7, %gdop(a)          # R_SPARC_GOTDATA_OP, marker for code transformation
+ldsw    [%l7], %i0
+```
+
+`ldsw [%g1+%lo(a)+12], %o0` generates two relocations, type `R_SPARC_LO10` and `R_SPARC_13`.
+
+`R_SPARC_LM22` resembles `R_SPARC_HI22`, except that the relocation truncates rather than validates. I think AArch64's `R_*_NC` (no-check) naming convention is superior.
 
 ## Mitigation
 
@@ -359,6 +423,21 @@ There are several strategies to mitigate relocation overflow issues.
 * Use compiler options such as `-Os`, `-Oz` and link-time optimization that focuses on decreasing the code size.
 * For compiler instrumentations (e.g. `-fsanitize=address`, `-fprofile-generate`), move some data to large data sections.
 * Use linker script commands [`INSERT BEFORE` and `INSERT AFTER`](/blog/2021-07-04-sections-and-overwrite-sections#insert-before-and-insert-after) to reorder output sections.
+
+## Section flags for large data
+
+During my time at Google, we encountered relocation overflow issues with large x86-64 executables built with specific instrumentations like `-fprofile-generate` and various `-fsanitize=`, at optimization levels `-O1` and even `-O3`. (Unoptimized -O0 builds with these instrumentations would have exacerbated the problem.)
+
+Within the large Bazel monorepo, we aimed to implement toolchain settings to mitigate this relocation overflow pressure. I believe that [ld.lld --default-script](https://github.com/llvm/llvm-project/pull/89327) could offer an elegant solution by allowing us to mark specific data sections from instrumentation passes.
+
+Unfortunately, I didn't have the opportunity to deploy this during my tenure at Google. Instead, our approach was to utilize `setGlobalVariableLargeSection` to set the `SHF_X86_64_LARGE` flag on certain sections. LLD recognizes this flag and adjusts section placement accordingly.
+(e.g. <https://github.com/llvm/llvm-project/pull/74778>)
+
+This section flag oriented choice was primarily because this flag has been available for over a decade and some folks disliked a default linker script.
+
+If I were designing `SHF_X86_64_LARGE`, I would have been cautious about allocating a bit from the `SHF_MASKPROC` range (only 4, or 3 if we exclude `SHF_EXCLUDE`).
+
+There is a pending proposal to add a similar flag for AArch64: <https://github.com/ARM-software/abi-aa/pull/326>
 
 ## Debug information
 

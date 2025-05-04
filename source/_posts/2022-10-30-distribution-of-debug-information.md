@@ -256,6 +256,16 @@ bazel -c dbg --fission=yes :a  # bazel-bin/_objs/a/a.pic.dwo
 bazel -c dbg --fission=yes :a.dwp  # bazel-bin/a.dwp
 ```
 
+### Bazel
+
+Bazel sets `PWD=/proc/self/cwd` for local determinism.
+However, if you invoke the executable at a directory different from the repository root, the debugger might not be able to find source files or `.dwo` files.
+You could use the following command to debug a C++ test.
+
+```sh
+gdb -cd $PROJ/bazel-bin/path/to/a_test/_main -iex "directory $PROJ" -iex "set debug-file-directory $PROJ" --args path/to/a_test other args
+```
+
 ## debuginfod
 
 While gdb can hint that debug information is missing (e.g. `Missing separate debuginfos, use: dnf debuginfo-install xxx`), the manual step of installing the relevant debug information package is considered by many as inconvenient.
@@ -331,3 +341,9 @@ TODO
 ## Appendix: debug information size
 
 <https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html#index-feliminate-unused-debug-types>
+
+`-fdebug-types-section`: larger relocatable files but smaller image files
+
+`-mllvm -minimize-addr-in-v5=Ranges` useful for split DWARF
+
+`-gsimple-template-names` has been adopted by chrome <https://crrev.com/c/3988987>

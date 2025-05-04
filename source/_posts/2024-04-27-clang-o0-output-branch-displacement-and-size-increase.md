@@ -30,6 +30,8 @@ A good resource for understanding Szymanski's work is [_Assembling Span-Dependen
 Popular assemblers still used today tend to favor a "start small and grow" approach, typically requiring one more pass than Szymanski's "start big and shrink" method.
 This approach often results in smaller code and can handle additional complexities like alignment directives.
 
+In GNU Assembler's `gas/write.c`, `md_relax_frag` and `md_generic_table_relax_frag` are responsible for growing a machine-dependent instruction fragment. See `gas/config/tc-i386.c:md_relax_table` for an example.
+
 In LLVM, the [MC library](https://blog.llvm.org/2010/04/intro-to-llvm-mc-project.html) (Machine Code) is reponsible for assembly, disassembly, and object file formats.
 Within MC, "assembler relaxation" deals with span-dependent instructions. This is distinct from [linker relaxation](/blog/2021-03-14-the-dark-side-of-riscv-linker-relaxation).
 

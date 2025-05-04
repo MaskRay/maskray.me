@@ -4,6 +4,8 @@ author: MaskRay
 tags: [linker,llvm]
 ---
 
+Updated in 2025-02.
+
 ## Symbol related
 
 ### `--trace-symbol=<sym>`
@@ -179,6 +181,8 @@ b_c.a(b_c.o) extracts c.a(c.o) to resolve c()
 a_b.a(a_b.o) extracts b_c.a(b_c.o) to resolve b()
 main.o extracts a_b.a(a_b.o) to resolve a
 ```
+
+[GNU ld feature request](https://sourceware.org/bugzilla/show_bug.cgi?id=32720)
 
 ## Statistics
 

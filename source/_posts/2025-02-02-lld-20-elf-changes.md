@@ -88,11 +88,22 @@ This condition has been generalized in LLD 20 to `(ctx.arg.shared || !ctx.shared
 This means undefined symbols are excluded from `.dynsym` in both `ld.lld -pie a.o` and `ld.lld -pie --no-dynamic-linker a.o`, but not `ld.lld -pie a.o b.so`.
 This change brings LLD's behavior more in line with GNU ld.
 
-`Symbol::isPreemptible`, indicating whether a symbol could be bound to another component, is computed along with `isExported`.
-This is computed in two places: during symbol versioning handling, and before relocation scanning.
-In LLD 19, `computeIsPreemptible` is called during Identical Code Folding (ICF).
+`Symbol::isPreemptible`, indicating whether a symbol could be bound to another component, was calculated before relocation scanning and, in LLD 19, also during Identical Code Folding (ICF).
+In LLD 20, the ICF-related calculation has been moved to the symbol versioning parsing stage.
 
-In LLD 20, a symbol is exported to `.dynsym` when `((sym->isExported || sym->isPreemptible) && !sym->isLocal())` is true.
+In LLD 20, `isExported` and `isPreemptible` are computed in the following passes.
+
+* Scan input files, interleaved with symbol resolution: set `isExported` when defined or referenced by shared objects
+* Clear `isExported` if influenced by `--exclude-libs`
+* `parseVersionAndComputeIsPreemptible`
+  + Clear `isExported` if localized due to hidden visibility.
+  + For undefined symbols, compute `isPreemptible`
+  + For defined symbols in relocatable files, or bitcode files when `!ltoCanOmit`, set `isExported` and compute `isPreemptible`
+* `compileBitcodeFiles`
+* Scan LTO compiled relocatable files
+* Clear `isExported` if influenced by `--exclude-libs`
+* `finalizeSections`: recompute `isPreemptible`
+* `isPreemptible` and `isExported` determine whether a symbol should be exported to `.dynsym`.
 
 ```cpp
       for (Symbol *sym : ctx.symtab->getSymbols()) {
@@ -113,9 +124,6 @@ In LLD 20, a symbol is exported to `.dynsym` when `((sym->isExported || sym->isP
         }
       }
 ```
-
-`Symbol::isPreemptible`, indicating whether a symbol could be bound to another component, was calculated before relocation scanning and, in LLD 19, also during Identical Code Folding (ICF).
-In LLD 20, the ICF-related calculation has been moved to the symbol versioning parsing stage.
 
 ---
 

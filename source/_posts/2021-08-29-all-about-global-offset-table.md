@@ -4,7 +4,7 @@ author: MaskRay
 tags: [binutils,linker]
 ---
 
-Updated in 2024-07.
+Updated in 2025-05.
 
 ## Symbol address
 
@@ -289,6 +289,24 @@ ldr     x1, [x1, #:got_lo12:var]
 adrp    x1, var
 add     x1, x1, :lo12:var
 ```
+
+SPARC defines the three relocation types `R_SPARC_GOTDATA_OP_HIX22`, `R_SPARC_GOTDATA_OP_LOX10`, and `R_SPARC_GOTDATA_OP` to perform code transformation.
+
+```asm
+# input
+sethi   %gdop_hix22(var), %g1                 # R_SPARC_GOTDATA_OP_HIX22, (G >> 10) ^ (G >> 31)
+xor     %g1, %gdop_lox10(var), %g1            # R_SPARC_GOTDATA_OP_LOX10, (G & 0x3ff) | ((G >> 31) & 0x1c00)
+ldx     [%l7 + %g1], %l7, %gdop(var)          # R_SPARC_GOTDATA_OP, marker for code transformation
+ldsw    [%l7], %i0
+
+# output
+sethi	%hix22(var - _GLOBAL_OFFSET_TABLE_), %g1
+xor	    %g1, %lox10(var - _GLOBAL_OFFSET_TABLE_), %g1
+add	    %l7, %g1, %l7
+ldsw    [%l7], %i0
+```
+
+Without PC-relative load instructions, the code sequence is longer than AArch64's.
 
 ### Combining .got and .got.plt
 

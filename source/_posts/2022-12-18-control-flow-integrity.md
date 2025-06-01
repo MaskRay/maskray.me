@@ -4,7 +4,7 @@ author: MaskRay
 tags: [llvm]
 ---
 
-Updated in 2023-05.
+Updated in 2025-05.
 
 A control-flow graph (CFG) is a graph representation of all paths that might be traversed through a program during its execution.
 Control-flow integrity (CFI) refers to security policy dictating that program execution must follow a control-flow graph.
@@ -234,6 +234,67 @@ In the MSVC linker, `/cetcompat` marks an executable image as compatible with Co
 `setjmp/longjmp` need to save and restore the shadow stack pointer.
 
 Linux v6.6 introduced user-space API for shadow stack (`arch_prctl` values `ARCH_SHSTK_ENABLE/ARCH_SHSTK_DISABLE/ARCH_SHSTK_LOCK`).
+
+#### Armv9 Guarded Control Stack
+
+* When a BL (Branch and Link) instruction is executed, the return address is pushed onto the GCS and also stored in the Link Register (LR).
+* On a return instruction (RET), the processor verifies that the address in the LR matches the top of the GCS.
+
+Linker behavior:
+
+* When all relocatable files contain a `.note.gnu.property` section (with `NT_GNU_PROPERTY_TYPE_0` notes) containing the `GNU_PROPERTY_AARCH64_FEATURE_1_GCS` bit, or if `-z gcs=always` is specified:
+  + The output file will contain a `.note.gnu.property` section with the bit set.
+  + A `PT_GNU_PROPERTY` program header is created to encompass the `.note.gnu.property` section.
+* If `-z gcs-report={warning,error}` is specified, the linker will report a warning or error for any relocatable file lacking the feature bit.
+* Similarly, `-z gcs-report-dynamic={warning,error}` (which inherits from `-z gcs-report=` by default, capped at warning) triggers diagnostics for shared objects lacking the bit.
+
+glibc 2.41 supports the Guarded Control Stack extension. The statically-linked executable and dynamic loader enable GCS for the process by invoking a Linux syscall `prctl(PR_SET_SHADOW_STACK_STATUS, (unsigned long)PR_SHADOW_STACK_ENABLE, 0L, 0L, 0L)` under these conditions:
+
+* Enforced mode: When the tunable `glibc.cpu.aarch64_gcs` is 1.
+* Optional mode: When the tunable is 2, GCS is enabled when the feature bit is present in the executable and all shared objects.
+
+Linux 6.13, released on 19 Jan 2025, started to support Guarded Control Stack. [Documentation](https://docs.kernel.org/arch/arm64/gcs.html)
+
+#### RISC-V Zicfiss extension
+
+<https://github.com/riscv/riscv-isa-manual/blob/main/src/unpriv-cfi.adoc#shadow-stack-zicfiss>
+
+* In the function prologue, the `SSPUSH` instruction (or its compressed form `C.SSPUSH`) pushes the link register value on the shadow stack.
+* Upon return, the `SSPOPCHK` instruction (or its compressed form `C.SSPOPCHK`) pops an entry from the shadow stack and checks it against the link register.
+
+To enable the Zicfiss shadow stack, programs must be recompiled, and function prologues and epilogues require additional instructions, similar to a software-based shadow stack implementation.
+This is due to RISC-V's lack of dedicated call and return instructions, relying on the JALR instruction for procedure calls, returns, and indirect jumps.
+
+```asm
+// -fsanitize=shadow-call-stack
+addi    gp, gp, 0x8
+sd      ra, -0x8(gp)
+addi    sp, sp, -0x10
+sd      ra, 0x8(sp)
+call    foo
+ld      ra, 0x8(sp)
+addi    sp, sp, 0x10
+ld      ra, -0x8(gp)
+addi    gp, gp, -0x8
+ret
+```
+
+```asm
+// Zicfiss
+sspush  ra
+addi    sp, sp, -0x10
+sd      ra, 0x8(sp)
+call    foo
+ld      ra, 0x8(sp)
+addi    sp, sp, 0x10
+sspopchk        ra
+ret
+```
+
+* When all relocatable files contain a `.note.gnu.property` section (with `NT_GNU_PROPERTY_TYPE_0` notes) containing the `GNU_PROPERTY_RISCV_FEATURE_1_GCS` bit, or if `-z zicfiss=always` is specified:
+  + The output file will contain a `.note.gnu.property` section with the bit set.
+  + A `PT_GNU_PROPERTY` program header is created to encompass the `.note.gnu.property` section.
+* If `-z zicfiss-report={warning,error}` is specified, the linker will report a warning or error for any relocatable file lacking the feature bit.
 
 ### Stack unwinding
 
@@ -777,6 +838,22 @@ BTI setting instructions [are](https://reviews.llvm.org/D155485#4534547):
 – LDMDB, LDMEA.
 ```
 
+### RISC-V Zicfilp extension
+
+This is similar to Intel Indirect Branch Tracking.
+
+When enabled, indirect calls must target a 4-byte aligned landing pad instruction (LPAD), or a software-check exception (cause=18) is triggered.
+The source register can be x1 (link register) or x5 (alternate link register), supporting semantically direct calls (`call foo` expands to `auipc ra, imm20; jalr ra, imm12(ra)`) and return instructions.
+The condition for expecting a landing pad is defined as:
+
+```
+  is_lp_expected = ( (JALR || C.JR || C.JALR) &&
+                     (rs1 != x1) && (rs1 != x5) && (rs1 != x7) ) ? 1 : 0;
+```
+
+The `LPAD` instruction supports a landing pad label.
+If the label is non-zero, the x7 register must hold the expected value set by the caller, effectively providing a hardware-based implementation of [pax-future.txt](#pax-future.txt).
+
 ## Compiler warnings
 
 `clang -Wcast-function-type` warns when a function pointer is cast to an incompatible function pointer.
@@ -792,7 +869,3 @@ Forward-edge CFI
 
 * check that the target may be landed indirectly but does not check the function signature: Control Flow Guard, Intel Indirect Branch Tracking, Armv8.5 Branch Target Identification
 * check that the target may be landed indirectly and check the function signature: eXtended Flow Guard, `-fsanitize=cfi`, `-fsanitize=kcfi`, FineIBT
-
-Links:
-
-* RISC-V CFI: <https://github.com/riscv/riscv-cfi>

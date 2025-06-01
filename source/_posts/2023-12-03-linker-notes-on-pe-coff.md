@@ -4,7 +4,7 @@ author: MaskRay
 tags: [binutils,linker,windows]
 ---
 
-Updated in 2025-02.
+Updated in 2025-05.
 
 This article describes linker notes about Portable Executable (PE) and Common Object File Format (COFF) used on Windows and UEFI environments.
 
@@ -71,7 +71,11 @@ A defined symbol can be any of the following kinds:
 
 An undefined symbol has a storage class of `IMAGE_SYM_CLASS_EXTERNAL`, a section number of `IMAGE_SYM_UNDEFINED` (zero), and a value of zero.
 
-An undefined symbol with a storage class of `IMAGE_SYM_CLASS_WEAK_EXTERNAL` is a weak external, which is actually like a weak definition in ELF.
+An undefined symbol with a storage class of `IMAGE_SYM_CLASS_WEAK_EXTERNAL` is a weak external symbol.
+It is followed by an auxiliary record:
+
+* When the `Characteristics` is `IMAGE_WEAK_EXTERN_SEARCH_ALIAS`, the weak external symbol behaves like a weak definition in ELF.
+* (ARM64EC specific) When the `Characteristics` is `IMAGE_WEAK_EXTERN_SEARCH_ANTI_DEPENDENCY`, the weak external symbol is an anti-dependency alias.
 
 PE requires explicit annotations for exported symbols and imported symbols in DLL files.
 There are differences between code symbols and function symbols.
@@ -152,6 +156,9 @@ br x16
 ```
 
 TODO link.exe will issue a warning.
+
+MSVC supports an undocumented (as of May 2025) option `/d2ImportCallOptimization` that records the indirect call offsets into the `.impcall` section (<https://github.com/llvm/llvm-project/pull/121516>).
+The Windows kernel loader will rewrite indirect calls to direct calls.
 
 ### Imported data symbols
 

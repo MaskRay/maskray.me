@@ -2,7 +2,7 @@
 layout: post
 title: "LLVM integrated assembler: Improving MCExpr and MCValue"
 author: MaskRay
-tags: [llvm,mach-o]
+tags: [assembler,llvm]
 ---
 
 In my previous post, [_Relocation Generation in Assemblers_](/blog/2025-03-16-relocation-generation-in-assemblers),

@@ -1,8 +1,10 @@
 layout: post
 title: Assemblers
 author: MaskRay
-tags: [clang,gcc]
+tags: [assembler,llvm,binutils]
 ---
+
+Updated in 2025-05.
 
 This article provides a description of popular assemblers and their architecture-specific differences.
 
@@ -23,7 +25,7 @@ On the IBM z/OS platform, the IBM High Level Assembler (HLASM) is used. In 2021,
 
 <!-- more -->
 
-## Architectures
+## Instruction set architectures
 
 ### x86
 
@@ -95,7 +97,7 @@ For x86 architecture, NASM is another popular assembler.
 
 ## MIPS
 
-Modifiers are utilized to describe different access types of a symbol.
+Specifiers are utilized to describe different access types of a symbol.
 This serves as a bonus as it prevents symbol references from being mistaken as register names.
 However, the function call-like syntax can appear verbose.
 
@@ -124,7 +126,7 @@ addi 2, 2, var@toc@l
 
 ### AArch64
 
-Prefix modifiers are used to describe various access types of a symbol. Personally, this is the modifier syntax that I prefer the most.
+Prefix specifier are used to describe various access types of a symbol. Personally, this is the specifier syntax that I prefer the most.
 
 ```asm
 add     x8, x8, :tprel_hi12:tls
@@ -141,11 +143,9 @@ In LLVM, the `VariantKind` information is incoded as `AArch64MCExpr` (derived fr
 ImmVal = AArch64MCExpr::create(ImmVal, RefKind, getContext());
 ```
 
-`MCValue::RefKind` is introduced in 2014 to encode the VariantKind when a `MCExpr` is evaluated to a `MCValue`.
-
 ### RISC-V
 
-The modifier syntax is copied from MIPS.
+The specifier syntax is copied from MIPS.
 
 The documentation is available on <https://github.com/riscv-non-isa/riscv-asm-manual/blob/master/riscv-asm.md>.
 
@@ -204,12 +204,19 @@ In the binutils-gdb repository, `opcodes/` contains information on how to assemb
 
 `gas/read.c:potable` defines directives available to all targets. `gcc/config/obj-elf.c:elf_pseudo_table` defines ELF-specific directives. An architecture can define its own directives.
 
+### Symbol equates
+
 `.equiv` equates a symbol to an expression and reports an error if the symbol was already defined.
 
 `.set sym, expr` (synonymous with `.equ sym, expr` and `sym = expr`) equates a symbol to an expression. This can either define a symbol or redirect an undefined symbol to another symbol.
 The expression can use forward reference, namely symbols that are not defined yet.
 The defined symbols have the `STB_LOCAL` binding by default, and can be changed with `.globl` or `.weak` directive.
 `S_SET_VOLATILE` is called, so the defined symbol can be redefined.
+For a symbol equated to undefined symbol, relocations are generated against the undefined symbol  (`write.c:symbol_equated_reloc_p`)
+```asm
+call copymem@plt   # R_X86_64_PLT32(memcpy-4)
+copymem = memcpy
+```
 
 `.eqv sym, expr` calls `S_SET_FORWARD_REF` on the symbol. The evaluation (including DOT) is postponed to the use site.
 
@@ -221,14 +228,9 @@ For example, below we define two aliases for the symbol `_start`, where `backwar
 .globl backward
 ```
 
-`.set` can redirect an undefined symbol to another symbol. (`write.c:symbol_equated_reloc_p`)
-```asm
-call memcpy@plt
-
-copymem = memcpy
-```
-
 Defining a local symbol alias for a global symbol can avoid certain relocations.
+
+### DWARF support directives
 
 `.file` and `.loc` directives are used to create the `.debug_line` section.
 If `-g` is specified and none of `.file` and `.loc` is used, gas synthesizes debug information:
@@ -238,6 +240,8 @@ If `-g` is specified and none of `.file` and `.loc` is used, gas synthesizes deb
 * `.debug_ranges` or `.debug_rnglists`
 
 `.cfi*` directives are used to create `.eh_frame` or `.debug_frame`.
+
+### Loop directives
 
 GNU Assembler implements "INDEFINITE REPEAT BLOCK DIRECTIVES: .IRP AND .IRPC" from MACRO-11.
 ```asm
@@ -304,6 +308,8 @@ gas has supported `\+` for `.macro` directives since May 2024.
 I ported it to LLVM integrated assembler and made `\+` available for `.rept` and `.irp`/`.irpc`.
 We finally have a nice for loop syntax.
 
+### Conditional execution directives
+
 `.if`, `.ifdef`, and `.ifndef` directives allow us to write conditional code in assembly tests without using a C preprocessor.
 I often use `.ifdef` to combine positive tests and negative tests in one file.
 
@@ -319,6 +325,8 @@ I often use `.ifdef` to combine positive tests and negative tests in one file.
 ## negatives tests
 .endif
 ```
+
+---
 
 ffmpeg uses a nice technique to append `.size` directive after the function body.
 ```asm
@@ -348,6 +356,12 @@ The `.reloc` directive creates a relocation with the specified type, location, a
 GNU Assembler has [supported `.incbin`](https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=7e005732aa09aad97c790cab88d294aeed06eada) since 2001-07 (hey, C/C++ `#embed`).
 The review thread mentioned that `.incbin` had been supported by some other assemblers.
 
+[`.weakref`](https://sourceware.org/pipermail/binutils/2005-October/044471.html) enables the creation of weak aliases without directly modifying the target symbol's binding.
+This allows a header file in library A to optionally depend on symbols from library B.
+When the target symbol is otherwise not referenced, the object file affected by the weakref directive will include an undefined weak symbol.
+However, when the target symbol is defined or referenced (by the user), it can retain `STB_GLOBAL` binding to support [archive member extraction](/blog/2021-06-20-symbol-processing#archive-processing).
+GCC's `[[gnu::weakref]]` attribute, as used in runtime library headers like `libgcc/gthr-posix.h`, utilizes this feature.
+
 To support RISC-V linker relaxation, `gcc/config/tc-riscv.c` starts a new fragment after a relaxable instruction.
 
 A `struct frag` represents a code fragment that contains some known number of bytes, followed by some unknown number of bytes.
@@ -371,24 +385,62 @@ The function is called to preprocess the input. A line like `# 123 filename` wil
 
 ### `write_object_file`
 
-`relax_seg` iterates over fragments and tries to relax them.
+`chain_frchains_together` chains fragments together.
+
+`relax_seg` iterates over fragments and tries to relax them with `relax_segment`.
 
 `size_seg` finalizes section sizes.
+The pass also calls `tc_frob_section` and `obj_frob_section`.
+`config/obj-coff.c` defines  `obj_frob_section` to round up section sizes and create auxiliary symbols.
+
+Set `finalize_syms = 1;` (to enable `symp->flags.resolved = 1;`) and resolve symbol values (in global symbol list (`symbol_rootP`), local symbols, and `.reloc` referenced symbols).
+
+ELF defines the `obj_frob_file_before_adjust` hook (`elf_frob_file_before_adjust`) to remove unused `.weak` symbols ([[PATCH] Emit undefined weak symbols only when used](https://sourceware.org/pipermail/binutils/2002-January/016431.html)), which was to work around a limitation of very old GNU ld.
+The hook also removes unneeded versioned symbols.
 
 `adjust_reloc_syms` iterates over fixups and tries changing the referenced symbol to a section symbol.
-For an equated symbol (`symbol_equated_reloc_p`), the expression will be used.
+For an equated symbol (`symbol_equated_reloc_p`) or weak alias created by `.weakref`, the expression will be used.
+`config/tc-i386.c` defines `tc_fix_adjustable` to 0 to prevent section symbol conversion for SIZE, GOT, and TLS relocations.
 `config/tc-riscv.h` defines `tc_fix_adjustable(fixup)` to 0 to prevent section symbol conversion.
 
-`obj_frob_symbol` sets symbol information.
-
 `fix_segment` iterates over fixups and decides whether a fixup is applied as a constant or will become a relocation.
-The target-specific `md_apply_fix` is called.
 
+* Compute `add_number` if `fx_subsy`
+* Compute `add_number` if `fx_addsy`
+* Compute `add_number` if `fx_pcrel`
+* If not `fx_done`, call target-specific `md_apply_fix`
+* Call `symbol_mark_used_in_reloc` on `fx_addsy` and `fx_subsy`
+* Check fixup value overflow
+
+(
 `config/tc-arm.h` defines `TC_FORCE_RELOCATION_SUB_SAME` to force `R_ARM_REL32` relocations against Thumb functions.
 
 `config/tc-riscv.c` defines `md_apply_fix` to split a fixup into two and add a `BFD_RELOC_RISCV_RELAX` fixup (`R_RISCV_RELAX` relocation) for linker-relaxable instructions.
+It also handles `BFD_RELOC_RISCV_SUB8, BFD_RELOC_RISCV_SUB16, BFD_RELOC_RISCV_SUB32, BFD_RELOC_RISCV_SUB64`.
+)
 
-#### Expression evaluation
+Set up symbol table.
+Symbols equated to an undefined symbol are removed.
+ELF defines the `obj_frob_symbol` hook (`elf_frob_symbol`) to set `st_size` and visibility.
+Symbols equated to undefined or common symbols are removed.
+Unresolved symbols (`symbol_resolved_p`) lead to errors.
+
+`tc_adjust_symtab` adjusts the symbol table.
+`config/tc-ppc.c` defines this hook to remove the special symbol `.TOC`.
+
+`obj_adjust_symtab` adjusts the symbol table.
+ELF defines this hook (`elf_adjust_symtab`) to define group signature symbols as local if they are otherwise absent.
+
+`write_relocs` writes relocations. `tc_gen_reloc` and `install_reloc` are called for each fixup.
+`install_reloc` calls `bfd_install_relocation` to update the relocated location.
+
+ELF defines the `obj_frob_file_after_relocs` hook to update group section sizes.
+
+`compress_debug` compresses debug sections.
+
+`write_contents` writes section contents.
+
+### Expression evaluation
 
 There are [three expression evaluation strategies](https://sourceware.org/cgit/binutils-gdb/commit/?id=9497f5ac6bc10bdd65ea471787619bde1edca77d): `expr_normal`, `expr_evaluate`, and `expr_defer`.
 
@@ -433,14 +485,18 @@ Object file specific parsers (e.g. `ELFAsmParser`) and architecture-specific par
 Both the `MCAsmParser` and  `MCTargetAsmParser` objects can call `MCStreamer` API to emit assembly code or machine code.
 
 For an instruction parsed by the `MCTargetAsmParser`, if the streamer is an `MCAsmStreamer`, the `MCInst` will be pretty-printed by a target-specific `MCInstPrinter`.
-If the streamer is an `MCELFStreamer` (other object file formats are similar), `MCELFStreamer::emitInstToData` will use `${Target}MCCodeEmitter` from LLVM${Target}Desc to encode the `MCInst`, emit its byte sequence, and records needed relocations.
+If the streamer is an `MCELFStreamer` (other object file formats are similar), `MCELFStreamer::emitInstToData` will use `${Target}MCCodeEmitter` from LLVM${Target}Desc to encode the `MCInst`, emit its byte sequence, and records needed relocations (`MCAssembler` and `ELFObjectWriter`).
 An `ELFObjectWriter` object is used to write the relocatable object file.
 
 `MCAssembler` manages `MCAsmBackend`, `MCCodeEmitter`, and `MCObjectWriter`.
 Both `MCAsmStreamer` and `MCObjectStreamer` construct a `MCAssembler` instance.
 
 * `MCObjectStreamer` requires all three instances to be available, so targets that implement machine code emission must implement `MCAsmBackend`.
-* `MCAsmStreamer` allows all three to be nullptr. However, most targets implement `MCAsmBackend` and `MCObjectWriter` will be available as well. The instance holds some object file format specific states, even if we don't write an object file.
+* `MCAsmStreamer` allows all three to be nullptr. However, most targets implement `MCAsmBackend` and `MCObjectWriter` will be available as well. The instance holds some object file format specific states, even if we don't write an object file. The experimental ARC target does not implement `MCAsmBackend` or `MCObjectWriter`.
+
+The SPIR-V target implements `SPIRVObjectWriter::writeObject` to write a SPIR-V module, comprising a header (including magic, version, generator, etc; see "Physical Layout of a SPIR-V Module and Instruction") followed by a linear sequence of instructions.
+These instructions reside in a single section (LLVMMC's text section) and are encoded by `SPIRVMCCodeEmitter`.
+The SPIR-V target also provides a minimal MCAsmBackend implementation.
 
 ## Notes on LLVM integrated assembler
 
@@ -481,7 +537,7 @@ When assembling an assembly file into an object file, an expression can be evalu
 `.lto_discard` is an LLVM-specific directive that ignores label and symbol attributes for specified symbols.
 LLVMLTO uses the directive to ignore non-prevailing symbols in module-level inline assembly during regular LTO (e.g., `module asm ".weak foo"\nmodule asm ".equ foo,bar"`).
 
-[`.lto_set_conditional sym1, sym2`](https://reviews.llvm.org/D113613) is an LLVM-specific directive that is a variant of assignment (`.set`, `.equ`, `.equiv`).
+[`.lto_set_conditional sym1, sym2`](https://reviews.llvm.org/D113613) is an LLVM-specific directive that is a variant of equates (`.set`, `.equ`, `.equiv`).
 `sym1` is defined only if `sym2` is defined.
 If we create an alias for a symbol defined by module-level inline assembly, we can avoid creating the symbol if the aliasee is dropped by LTO.
 
@@ -539,27 +595,28 @@ For the other entries, `MCObjectStreamer::emitDwarfAdvanceLineAddr` selects one 
 
 There was a "fast path" (`if (AddrDelta->evaluateAsAbsolute(Res, getAssemblerPtr()))`) to emit a byte sequence instead of a `MCDwarfLineAddrFragment`.
 
-### Symbol reassignment
+### Symbol equates
 
-Symbol reassignment in LLVM integrated assembler has a pile of hacks (see `llvm/lib/MC/MCParser/AsmParser.cpp:parseAssignmentExpression`).
-Limited scenarios are supported (`llvm/test/MC/AsmParser/variables.s`).
+GNU Assembler supports symbol reassignment via `.set, `.equ`, or `=`.
+Before May 2025, LLVM's integrated assembler only allowed reassignment for `MCConstantExpr` cases, as it struggled with scenarios like:
 
-LLVM integrated assembler reports `error: invalid reassignment of non-absolute variable 'x'` for the test case on <https://sourceware.org/bugzilla/show_bug.cgi?id=288>.
-```asm
-_start:
-.set x,0
-.long x
-.set x,.-_start
-.long x
-.balign 4
-.set x,.-_start
-.long x
+```
+.data
+.set x, 0
+.long x         // reference the first instance
+x = .-.data
+.long x         // reference the second instance
+.set x,.-.data
+.long x         // reference the third instance
 ```
 
-In the Linux kernel, [powerpc/64/asm: Do not reassign labels](https://git.kernel.org/linus/d72c4a36d7ab560127885473a310ece28988b604) removed a reassignment pattern to allow LLVM integrated assembler.
+Between two assignments, it could not ensure that a reference binds to the earlier assignment.
+LLVMMC used `MCSymbol::IsUsed` and other conditions in `parseAssignmentExpression` to reject potentially unsafe reassignments, but certain `MCConstantExpr` uses could be unsafe as well.
 
-GNU Assembler uses `symP->flags.resolving` to detect `symbol definition loop encountered at` errors.
-The variable is primarily used by `symbol_clone_if_forward_ref` and `resolve_symbol_value`.
+Note: GNU Assembler used to have a similar problem (<https://sourceware.org/bugzilla/show_bug.cgi?id=288>), which was addressed in 2005.
+
+In the Linux kernel, [powerpc/64/asm: Do not reassign labels](https://git.kernel.org/linus/d72c4a36d7ab560127885473a310ece28988b604) removed a reassignment pattern to allow LLVM integrated assembler.
+I have implemented `.set` reassignment in [May 2025](https://github.com/llvm/llvm-project/commit/e015626f189dc76f8df9fdc25a47638c6a2f3feb).
 
 ### Expression evaluation
 
@@ -596,7 +653,7 @@ add x0, x0, Lb-La  // ok
 add x0, x0, b-a    // rejected, different atoms
 ```
 
-However, `.set` directives and variable assignments (`var = b-a;`) resolve label differences disregarding the atom restriction.
+However, `.set` directives and equates (`var = b-a;`) resolve label differences disregarding the atom restriction.
 
 In addition, the `.set` directive suppresses relocations (`SetDirectiveSuppressesReloc = true;`).
 `X86MCAsmInfoDarwin::X86MCAsmInfoDarwin` sets `DwarfFDESymbolsUseAbsDiff`

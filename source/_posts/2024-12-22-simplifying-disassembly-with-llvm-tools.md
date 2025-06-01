@@ -2,7 +2,7 @@
 layout: post
 title: Simplifying disassembly with LLVM tools
 author: MaskRay
-tags: [llvm,x86,assembly]
+tags: [assembler,llvm,x86]
 ---
 
 Both compiler developers and security researchers have built disassemblers.

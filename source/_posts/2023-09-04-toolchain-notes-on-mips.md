@@ -417,7 +417,7 @@ TODO
 
 <https://web.archive.org/web/20140908233719/https://dmz-portal.mips.com/wiki/MIPS_relocation_types>
 
-While ABis use REL for dynamic relocations, the o32 ABI also uses REL for relocatable files while n64 uses RELA.
+While all ABIs use REL for dynamic relocations, the o32 ABI also uses REL for relocatable files while n64 uses RELA.
 The little-endian n64 ABI messed up the `r_info` field in relocations.
 
 The n64 ABI can pack up to 3 relocations with the same offset into one record (`r_type, r_type2, r_type3`).

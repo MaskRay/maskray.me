@@ -731,6 +731,15 @@ ICF can alter function names in stack traces and make profiling inaccurate.
 
 The debug information regression could be alleviated if you enable `DW_AT_LLVM_stmt_sequence` and use the caller to disambiguate the address in a folded function.
 
+https://github.com/llvm/llvm-project/pull/139493#issuecomment-2896493771
+
+When we have
+
+* Section A1, with a relocation on a symbol S1, where S1 is at offset K in section B1.
+* Section A2, with a relocation on a symbol S2, where S2 is at offset K in section B2.
+
+When the relocation type is `R_AARCH64_ADR_GOT_PAGE`, and sections B1 and B2 are merged while keeping symbols S1 and S2 separate, sections A1 and A2 can currently be merged, which leads to correctness issues.
+
 ### `--symbol-ordering-file=<file>`
 
 Specify a text file with one defined symbol per line.

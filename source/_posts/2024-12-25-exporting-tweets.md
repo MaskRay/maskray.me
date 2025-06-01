@@ -2,7 +2,7 @@
 layout: post
 title: Exporting Tweets
 author: MaskRay
-tags: [llvm,x86,assembly]
+tags: [website]
 ---
 
 On <https://x.com/settings/>, click `More -> Settings and privacy -> Download an archive of your data`.

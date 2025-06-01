@@ -2,7 +2,7 @@
 layout: post
 title: Relocation generation in assemblers
 author: MaskRay
-tags: [binutils,llvm]
+tags: [assembler,binutils,llvm]
 ---
 
 This post explores how GNU Assembler and LLVM integrated assembler generate relocations, an important step to generate a relocatable file.
@@ -79,27 +79,47 @@ movl a-b, %eax
 ^
 ```
 
+Let's use some notations from the AArch64 psABI.
+
+- ``S`` is the address of the symbol.
+- ``A`` is the addend for the relocation.
+- ``P`` is the address of the place being relocated (derived from ``r_offset``).
+- ``GOT`` is the address of the Global Offset Table, the table of code and data addresses to be resolved at dynamic link time.
+- ``GDAT(S+A)`` represents a pointer-sized entry in the ``GOT`` for address ``S+A``.
+
 ### PC-relative fixups
 
-PC-relative fixups compute their values as `sym_a + offset - current_location`.
+PC-relative fixups compute their values as `sym_a - current_location + offset` (`S - P + A`) and can be seen as a special case that uses `sym_b`.
 (I’ve skipped `- sym_b`, since no target I know permits a subtrahend here.)
 
-When `sym_a` is a local symbol defined within the current section, these PC-relative fixups evaluate to constants.
+When `sym_a` is a non-ifunc local symbol defined within the current section, these PC-relative fixups evaluate to constants.
 But if `sym_a` is a global or weak symbol in the same section, a relocation entry is generated.
 This ensures [ELF symbol interposition](/blog/2021-05-16-elf-interposition-and-bsymbolic) stays in play.
+
+In contrast, label differences (e.g. `.quad g-f`) can be resolved even if `f` and `g` are global.
+
+On some targets (e.g., AArch64, PowerPC, RISC-V), the PC-relative offset is relative to the start of the instruction (P), while others (e.g., AArch32, x86) are relative to P plus a constant.
 
 ### Resolution Outcomes
 
 The assembler's evaluation of fixups leads to one of three outcomes:
 
 * Error: When the expression isn't supported.
-* Resolved fixups: When the fixup evaluates to a constant, the assembler updates the relevant bits in the instruction directly. No relocation entry is needed.
-  + There are target-specific exceptions that make the fixup unresolved. In AArch64 `adrp x0, l0; l0:`, the immediate might be either 0 or 1, dependant on the instructin address. In RISC-V, linker relaxation might make fixups unresolved.
+* Resolved fixups: The assembler updates the relevant bits in the instruction directly. No relocation entry is needed.
+  + There are target-specific exceptions that make the fixup unresolved. In AArch64 `adrp x0, l0; l0:`, the immediate might be either 0 or 1, dependant on the instruction address. In RISC-V, linker relaxation might make fixups unresolved.
 * Unresolved fixups: When the fixup evaluates to a relocatable expression but not a constant, the assembler
   + Generates an appropriate relocation (offset, type, symbol, addend).
   + For targets that use RELA, usually zeros out the bits in the instruction field that will be modified by the linker.
   + For targets that use REL, leave the addend in the instruction field.
   + If the referenced symbol is defined and local, and the relocation type is not in exceptions (gas `tc_fix_adjustable`), the relocation references the section symbol instead of the local symbol.
+
+Fixup resolution depends on the fixup type:
+
+* PC-relative fixups that describe the symbol itself (the relocation operation looks like `S - P + A`) resolve to a constant if `sym_a` is a non-ifunc local symbol defined in the current section.
+* `relocation_specifier(S + A)` style fixups resolve when `S` refers to an absolute symbol.
+* Other fixups, including TLS and GOT related ones, remain unresolved.
+
+For ELF targets, if a non-TLS relocation operation references the symbol itself `S` (not `GDAT`), it may be adjusted to reference the section symbol instead.
 
 If you are interested in relocation representations in different object file formats, please check out my post [Exploring object file formats](/blog/2024-01-14-exploring-object-file-formats).
 
@@ -404,8 +424,8 @@ with:
 * `SymB` as an optional symbol reference (subtrahend)
 * `Cst` as a constant value
 
-This mirrors the relocatable expression concept, but `RefKind`—[added in 2014 for AArch64](https://github.com/llvm/llvm-project/commit/0999cbd0b9ed8aa893cce10d681dec6d54b200ad)—remains rare among targets.
-(I've recently made some cleanup to some targets. For instance, I migrated PowerPC's [@l and @ha folding to use `RefKind`](https://github.com/llvm/llvm-project/commit/89812985358784b16fb66928ad4da411386f4720).)
+This mirrors the relocatable expression concept, but `Specifier`—[added in 2014 for AArch64 as `RefKind`](https://github.com/llvm/llvm-project/commit/0999cbd0b9ed8aa893cce10d681dec6d54b200ad)—remains rare among targets.
+(I've recently made some cleanup to some targets. For instance, I migrated PowerPC's [@l and @ha folding to use `Specifier`](https://github.com/llvm/llvm-project/commit/89812985358784b16fb66928ad4da411386f4720).)
 
 AArch64 implements a clean approach to select the relocation type.
 It dispatches on the fixup kind (an operand within a specific instruction format), then refines it with the relocation specifier.
@@ -428,6 +448,29 @@ case AArch64::fixup_aarch64_add_imm12:
   ...
 }
 ```
+
+`MCAssembler::evaluateFixup` and `ELFObjectWriter::recordRelocation` record a relocation.
+
+```cpp
+Evaluate `const MCExpr *Fixup::Value` to a relocatable expression.
+Determine the fixup value. Adjust the value if FKF_IsPCRel.
+If the relocatable expression is a constant, treat this fixup as resolved.
+
+if (IsResolved && (is_reloc_directive || Backend.shouldForceRelocation(...)))
+  IsResolved = false;
+
+if (!IsResolved) {
+  // For exposition I've inlined ELFObjectWriter::recordRelocation here.
+  // the function roughly maps to GNU Assembler's `md_apply_fix` and `tc_gen_reloc`,
+  Type = TargetObjectWriter->getRelocType(Ctx, Target, Fixup, IsPCRel)
+  Determine whether SymA can be converted to a section symbol.
+  Relocations.push_back(...)
+}
+// Write a value to the relocated location. When using relocations with explicit addends, the function is a no-op when `IsResolved` is true.
+Backend.applyFixup(...)
+```
+
+`FKF_IsPCRel` applies to fixups whose relocation operations look like `S - P + A`, like branches and PC-relative operations, but not to GOT-related operations (e.g., `GDAT - P + A`).
 
 ### `MCSymbolRefExpr` issues
 
@@ -466,21 +509,21 @@ Here, the specifier attaches only to the LHS, leaving the full result uncovered.
 Worse, leaky abstractions that  `MCSymbolRefExpr` is accessed widely in backend code introduces another problem:
 while `MCBinaryExpr` with a constant RHS mimics `MCSymbolRefExpr` semantically, code often handles only the latter.
 
-### `MCFixup` and `MCTargetExpr` encoding relocation specifiers
+### `MCFixup` should store `MCValue` instead of `MCExpr`
 
-`MCTargetExpr` subclasses, as used by AArch64 and RISC-V, offer a cleaner approach to encode relocations.
-We should limit `MCTargetExpr` to top-level use to encode one single relocation and avoid its inclusion as a subexpression.
+The const `MCExpr *MCFixup::getValue()` method feels inconvenient and less elegant compared to GNU Assembler's unified fixup/relocatable expression for these reasons:
 
-```
-AArch64MCExpr
-  RefKind
-  Expr(MCBinaryExpr): Op, LHS, RHS
-```
+* Relocation specifier can be encoded by every sub-expression in the `MCExpr` tree, rather than the fixup itself (or the instruction, as in GNU Assembler). Supporting all of `a+4@got, a@got+4, (a+4)@got` requires extensive hacks in LLVM MCParser.
+* `evaluateAsRelocatable` converts an MCExpr to an MCValue without updating the MCExpr itself. This leads to redundant evaluations, as `MCAssembler::evaluateFixup` is called multiple times, such as in `MCAssembler::fixupNeedsRelaxation` and `MCAssembler::layout`.
+
+Storing a MCValue directly in MCFixup, or adding a relocation specifier member, could eliminate the need for many target-specific `MCTargetFixup` classes that manage relocation specifiers.
+However, target-specific evaluation hooks would still be needed for specifiers like PowerPC `@l` or RISC-V `%lo()`.
+
+Computing label differences will be simplified as we can utilize `SymA` and `SymB`.
+
+Our long-term goal is to encode the relocation specifier within `MCFixup`. (<https://github.com/llvm/llvm-project/issues/135592>)
 
 `MCSymbolRefExpr::VariantKind` as the legacy way to encode relocations should be completely removed (probably in a distant future as many cleanups are required).
-
-Our long-term goal is to encode the relocation specifier within `MCFixup`, so that every sub-expression in the `MCExpr` tree will not need specifiers.
-(<https://github.com/llvm/llvm-project/issues/135592>)
 
 ### AsmParser: `expr@specifier` 
 

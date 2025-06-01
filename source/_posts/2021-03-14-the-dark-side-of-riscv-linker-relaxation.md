@@ -1,7 +1,7 @@
 layout: post
 title: The dark side of RISC-V linker relaxation
 author: MaskRay
-tags: [binutils,llvm,linker]
+tags: [assembler,binutils,llvm,linker,riscv]
 ---
 
 Updated in 2023-09.

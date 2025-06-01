@@ -166,7 +166,7 @@ However, it ceases to be a solution when inlining happens.
 Let's walk through an example demonstrating the problem.
 
 Our first design uses a plain `meta` for each text section.
-We use `,unique` to keep separate sections, otherwise the assembler would combine `meta` into a monolithic section.
+We use `,unique` (binutils 2.35) to keep separate sections, otherwise the assembler would combine `meta` into a monolithic section.
 ```asm
 # Monolithic meta.
 .globl _start

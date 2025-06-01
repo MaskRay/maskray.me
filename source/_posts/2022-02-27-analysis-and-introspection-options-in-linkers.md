@@ -4,7 +4,30 @@ author: MaskRay
 tags: [linker,llvm]
 ---
 
-Updated in 2025-02.
+Updated in 2025-05.
+
+## Reproduce tarball
+
+LLD offers a convenient feature to bundle all input files into a tarball, making it easier to experiment with different linker options. Use either of these commands:
+
+```sh
+clang -fuse-ld=lld -Wl,--reproduce=/tmp/rep.tar a.o b.o
+LLD_REPRODUCE=/tmp/rep.tar clang -fuse-ld=lld a.o b.o
+```
+
+Then unpack the tarball, navigate to the directory, and invoke LLD with the response file:
+
+```sh
+cd /tmp; tar xf rep.tar; cd rep
+ld.lld @response.txt # append options like -y foo
+```
+
+The response file includes the `--chroot` option, which GNU ld does not support.
+In most cases, you can simply remove this option to examine GNU ld's behavior.
+
+```sh
+ld.bfd @response.txt
+```
 
 ## Symbol related
 
@@ -183,6 +206,10 @@ main.o extracts a_b.a(a_b.o) to resolve a
 ```
 
 [GNU ld feature request](https://sourceware.org/bugzilla/show_bug.cgi?id=32720)
+
+### `--why-live=<sym>`
+
+LLD's ELF port has implemented this option in [March 2025](https://github.com/llvm/llvm-project/pull/127112).
 
 ## Statistics
 

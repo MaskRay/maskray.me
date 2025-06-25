@@ -729,6 +729,11 @@ It has to be done early because the later steps need access to its emitted input
 The LTO library has no layout information to guide its choice of branch instructions.
 As an example, for a reference from .data to .text, the LTO library does not know the distance.
 
+## Relaxation oscillation
+
+* Two forward call scenario: <https://github.com/llvm/llvm-project/pull/142899>. The solution prevents byte removal after a few iterations.
+* Three forward call scenario: <https://github.com/llvm/llvm-project/pull/73624>. Although the scenario is feasible, the test highlights contributed overlapping sections.
+
 ## Epilog
 
 I sometimes call linker relaxation poor man's link-time optimization with nice ergonomics.

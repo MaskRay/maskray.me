@@ -4,7 +4,7 @@ author: MaskRay
 tags: [gcc,llvm]
 ---
 
-Update in 2024-01.
+Update in 2025-06.
 
 [中文版](#中文版)
 
@@ -400,6 +400,17 @@ In a `-DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86` build of clang, `.
 
 ### Remarks
 
+Some conditional execution states are not expressible with CFI instructions.
+For instance, in the code between `popne {some registers}` and `bne label` below, the registers may or may not be on the stack, and DWARF CFI cannot represent this scenario.
+
+```asm
+// AArch32
+cmp   this, that
+popne {some registers}
+...
+bne   label
+```
+
 CFI instructions are suitable for the compiler to generate code, but cumbersome to write in hand-written assembly.
 In 2015, Alex Dowad contributed an awk script to musl libc to parse the assembly and automatically generate CFI directives.
 In fact, generating precise CFI instructions is challenging for compilers as well. For a function that does not use a frame pointer, adjusting SP requires outputting a CFI directive to redefine CFA.
@@ -458,6 +469,8 @@ The DWARF scheme also has very low information density. The various compact unwi
 * augmentation\_data: While this provide flexibility, in practice very rarely a function needs anything more than a personality and a LSDA pointer.
 
 Callee-saved registers other than FP are oftentimes unneeded but there is no compiler option to drop them.
+
+binutils implemented [`as --scfi=experimental`](https://sourceware.org/binutils/wiki/gas/SCFI) in 2024 to generate CFI from assembly files for AArch64 and x86.
 
 #### `SHT_X86_64_UNWIND`
 

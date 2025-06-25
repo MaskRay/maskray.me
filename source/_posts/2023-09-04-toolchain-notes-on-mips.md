@@ -475,6 +475,8 @@ LLVM integrated assembler parses these operators in the generic code (<https://r
 lui   $gp, %hi(%neg(%gp_rel(foo+4)))
 ```
 
+GCC's mips port [added](https://gcc.gnu.org/git/?p=gcc.git;a=commit;h=d1399bd0ff3893bb9ebea7b977c7f3ec91b728b0) `-mlong-calls` in 1992-03.
+
 The following script demonstrate that we can use a GCC cross compiler configured with 32-bit MIPS to build 64-bit object files.
 
 ```sh

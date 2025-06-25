@@ -273,6 +273,23 @@ Fixed by [`aarch64: Make elf_machine_{load_address,dynamic} robust [BZ #28203]`]
 * [`x86_64: Simplify elf_machine_{load_address,dynamic}`](https://sourceware.org/git/?p=glibc.git;a=commit;h=b37b75d269883a2c553bb7019a813094eb4e2dd1)
 * [`i386: Port elf_machine_{load_address,dynamic} from x86-64`](https://sourceware.org/git/?p=glibc.git;a=commit;h=https://sourceware.org/git/?p=glibc.git;a=commit;h=91e92272caefad4b6156572fc41671dcbd93afe5)
 
+For added fun, consider the addresses of two hidden symbols, like `__ehdr_start` and `_end`.
+GCC may generate a vector load using a constant pool that requires dynamic relocation.
+If the vector load is reordered before `ELF_DYNAMIC_RELOCATE`, the loaded value will be incorrect.
+To address this, glibc 2.42 introduced inline assembly compiler barriers (<https://sourceware.org/bugzilla/show_bug.cgi?id=33088>).
+
+```asm
+	movq	.LC0(%rip), %xmm0
+...
+
+	.section	.data.rel.ro.local,"aw"
+	.align 8
+.LC0:
+	.quad	__ehdr_start
+	.hidden	__ehdr_start
+	.hidden	_end
+```
+
 ### Non-default version symbols
 
 If linked with ld.lld<13.0.0 or gold ([PR28196](https://sourceware.org/bugzilla/show_bug.cgi?id=28196)), the built ld.so will define both `__free_hook@GLIBC_2.2.5` and `__free_hook@@GLIBC_2.2.5`.

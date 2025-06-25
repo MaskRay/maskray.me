@@ -47,6 +47,8 @@ For example, only one instruction is needed to load `_GLOBAL_OFFSET_TABLE_` (see
 larl    %r12, _GLOBAL_OFFSET_TABLE_ # r12 = _GLOBAL_OFFSET_TABLE_
 ```
 
+Unfortunately, LARL cannot generate odd addresses. To prevent GOT indirection, compilers typically ensure that symbols are at least aligned by 2.
+
 The RIL instruction format, consisting of 6 bytes, encodes a register and a 32-bit immediate operand.
 This enables it to implement valuable instructions like BRASL (Branch Relative And Save Long, like x86's CALL) and LARL (Load Address Relative Long, like x86's MOV with RIP-relative addressing).
 

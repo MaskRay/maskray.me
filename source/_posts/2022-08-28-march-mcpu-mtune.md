@@ -4,6 +4,8 @@ author: MaskRay
 tags: [gcc]
 ---
 
+Updated in 2025-05.
+
 In GCC and Clang, there are three major options specifying the architecture and microarchitecture the generated code can run on.
 The general semantics are described below, but each target machine may assign different semantics.
 
@@ -22,6 +24,8 @@ See <https://gcc.gnu.org/onlinedocs/gcc/ARM-Options.html>.
 AArch32 follows the general description.
 
 `-march=name[+extension...]` may specify architecture extensions.
+
+In September 2024, [GCC introduced `-march=unset`](https://gcc.gnu.org/git/?p=gcc.git&a=commit;h=7d6c6a0d15c136a68d066c60da0f48265a2b1886) to override a previously set `-march=`, enabling the use of an incompatible `-mcpu=` value with `-mcpu=something -march=unset`.
 
 ## AArch64
 

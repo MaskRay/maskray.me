@@ -472,6 +472,16 @@ ld.lld places rodata and data on both sides of text. This layout has the advanta
 
 gold is the first linker which implements `--rosegment`.
 
+### `--xosegment`
+
+This option enables support for [execute-only memory](https://isopenbsdsecu.re/mitigations/execute_only/).
+
+* AArch32 uses the `SHF_ARM_PURECODE` section flag to desginate sections with pure program instructions and no data.
+* AArch64 uses the `SHF_AARCH64_PURECODE` section flag.
+
+By default, LLD treats sections with the `SHF_ALLOC|SHF_EXECINSTR|SHF_AARCH64_PURECODE` flags as compatible with those having `SHF_ALLOC|SHF_EXECINSTR` flags, merging them into a single `PT_LOAD segment`.
+When `--xosegment` ois specified, LLD separates these sections into distinct `PT_LOAD` segments: one for sections with `SHF_ALLOC|SHF_EXECINSTR|SHF_AARCH64_PURECODE` and another for sections with `SHF_ALLOC|SHF_EXECINSTR`.
+
 ### `-z noseparate-code`
 
 This is GNU ld's classic layout allowing some file content to be mapped as more than one `PT_LOAD` segments, with one being executable and another one being non-executable.

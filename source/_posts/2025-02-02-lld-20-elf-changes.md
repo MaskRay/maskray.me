@@ -81,7 +81,7 @@ All previous uses of `Symbol::includeInDynsym` have been updated to use `Symbol:
 The old confusing `Symbol::exportDynamic` has been removed.
 
 A special case within `Symbol::includeInDynsym` checked for `isUndefWeak() && ctx.arg.noDynamicLinker`.
-(This could be generalized to `isUndefined() && ctx.arg.noDynamicLinker`, as non-weak undefined symbols led to errors.)
+(This could be generalized to `isUndefined() && ctx.arg.noDynamicLinker`, as non-weak undefined symbols led to errors. Nonetheless, `noDynamicLinker` has been removed to improve consistency.)
 This condition ensures that undefined symbols are not included in `.dynsym` for statically linked `ET_DYN` executables (created with `clang -static-pie`).
 
 This condition has been generalized in LLD 20 to `(ctx.arg.shared || !ctx.sharedFiles.empty()) && (sym->isUndefined() || sym->isExported)`.

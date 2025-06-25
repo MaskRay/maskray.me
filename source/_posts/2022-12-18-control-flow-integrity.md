@@ -448,28 +448,25 @@ _ZTV1D:
 	.quad	0; .quad	_ZTI1A; .quad	_ZN1A1fEv
 	.zero	8
 	.quad	0; .quad	_ZTI1C; .quad	_ZN1A1fEv
+    .size   .L__unnamed_1, 88
 ...
 
-	movq	(%rdi), %rax
-	leaq	__typeid__ZTS1A_global_addr(%rip), %rdx
-	movq	%rax, %rcx
-	subq	%rdx, %rcx
-	rorq	$__typeid__ZTS1A_align, %rcx
-	movq	%rcx, %rdx
-	subq	$__typeid__ZTS1A_size_m1@ABS8, %rdx
-	ja	.LBB0_2
-	jmp	.LBB0_1
+
+_Z2afP1A:                               # @_Z2afP1A
+        .cfi_startproc
+# %bb.0:
+        movq    (%rdi), %rax
+        leaq    .L__unnamed_1(%rip), %rcx
+        subq    %rax, %rcx
+        addq    $80, %rcx
+        rorq    $6, %rcx
+        cmpq    $2, %rcx
+        jae     .LBB0_1
+# %bb.2:
+        jmpq    *(%rax)                         # TAILCALL
 .LBB0_1:
-	movl	$1, %edx
-	shll	%cl, %edx
-	movl	$__typeid__ZTS1A_inline_bits, %ecx
-	andl	%edx, %ecx
-	cmpl	$0, %ecx
-	jne	.LBB0_3
-.LBB0_2:	# %trap
-	ud1l	2(%eax), %eax
-.LBB0_3:	# %cont
-	callq	*(%rax)
+        ud1l    2(%eax), %eax
+.Lfunc_end0:
 ```
 
 Cross-DSO CFI requires a runtime (see `compiler-rt/lib/cfi`).

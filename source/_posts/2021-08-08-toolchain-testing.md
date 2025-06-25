@@ -4,7 +4,7 @@ author: MaskRay
 tags: [binutils,llvm]
 ---
 
-Updated in 2023-08.
+Updated in 2025-06.
 
 Some random notes about toolchain testing.
 
@@ -219,6 +219,8 @@ On the other hand, driver options have compatibility requirements.
 
 ### binutils-gdb
 
+The test harness is based on DejaGNU. Ian Lance Taylor [described DegaGNU's disadvantages in 2011](https://www.airs.com/blog/archives/499).
+
 In `binutils/testsuite/lib/binutils-common.exp`, `run_dump_test` is the core that runs `as` and `ld`, and checks the output of a dump program matches the expected patterns in the .d file.
 
 Let's take a whirlwind tour and figure out the numerous problems.
@@ -299,14 +301,14 @@ I filed a feature request: [binutils/testsuite/lib/binutils-common.exp: Support 
 
 ### GCC
 
-GCC isn't a great example, either.
-GCC uses `dg-*` directives which provide more features than binutils's `run_dump_test` directives.
-Unfortunately the [syntax](https://gcc.gnu.org/onlinedocs/gccint/Test-Directives.html) is a bit obscure and composability of directives is not great.
+GCC's test harness is also based on DejaGNU. However, it employs [many directives](https://gcc.gnu.org/onlinedocs/gccint/Test-Directives.html), which offer more functionality than binutils' direstives.
+Unfortunately, the directives are quite under-powered and the composability is limited.
 
-Moreoever, you cannot invoke GCC twice in a test file.
-Developers work around this tooling limitation by copying a existing test file to a new one.
+A notable limitation is that GCC test files cannot invoke the compiler twice within a single test.
+To work around this, developers often duplicate an existing test file and modify it for additional test cases, which can be cumbersome and error-prone.
 
-Some `gcc/testsuite/gcc.target/` files have `/* { dg-final { scan-assembler "vhadd.u16"  }  } */` like directives, but the patterns lack context.
+In the `gcc/testsuite/gcc.target/` directory, some test files include directives like `/* { dg-final { scan-assembler "vhadd.u16"  }  } */`.
+They typically check just one instruction and lack context. For example:
 
 ```text
 /* Verify we that use %rsp to access stack.  */
@@ -314,7 +316,9 @@ Some `gcc/testsuite/gcc.target/` files have `/* { dg-final { scan-assembler "vha
 /* { dg-final { scan-assembler "%rsp" } } */
 ```
 
-The last directive checks that there is a match for `%rsp`, but what is the instruction? What is the other operand? Is the `%rsp` emitted in the right place?
+The final directive checks the presence of `%rsp`, but key details are missing.
+What instruction uses `%rsp`? What is the other operand? Is `%rsp` emitted in the correct location?
+Without this context, the directive's usefulness is limited.
 
 ### Clang driver
 

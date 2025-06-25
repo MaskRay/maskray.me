@@ -123,6 +123,9 @@ For ELF targets, if a non-TLS relocation operation references the symbol itself 
 
 If you are interested in relocation representations in different object file formats, please check out my post [Exploring object file formats](/blog/2024-01-14-exploring-object-file-formats).
 
+If an equated symbol `sym` is resolved relative to a section, relocations are generated against `sym`.
+Otherwise, if it resolves to a constant or an undefined symbol, relocations are generated against that constant or undefined symbol.
+
 ## Examples in action
 
 **Branches**

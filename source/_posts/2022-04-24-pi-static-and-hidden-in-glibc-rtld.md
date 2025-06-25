@@ -323,6 +323,55 @@ sudo qemu-nbd -d /dev/nbd0 m68k-deb10.qcow2
 qemu-system-m68k -M q800 -m 1000M -kernel vmlinux-5.16.0-6-m68k -initrd initrd.img-5.16.0-6-m68k -append 'root=/dev/sda2 console=tty' -hda debian-m68k.qcow2 -net nic,model=dp83932 -net user,smb=$HOME/Dev
 ```
 
+## x86-64 
+
+For added fun, consider the addresses of two hidden symbols, like `__ehdr_start` and `_end`.
+GCC may generate a vector load using a constant pool that requires dynamic relocation.
+If the vector load is reordered before `ELF_DYNAMIC_RELOCATE`, the loaded value will be incorrect.
+To address this, glibc 2.42 introduced inline assembly compiler barriers (<https://sourceware.org/bugzilla/show_bug.cgi?id=33088>).
+
+```asm
+	movq	.LC0(%rip), %xmm0
+...
+
+	.section	.data.rel.ro.local,"aw"
+	.align 8
+.LC0:
+	.quad	__ehdr_start
+	.hidden	__ehdr_start
+	.hidden	_end
+```
+
+## Non-`HIDDEN_VAR_NEEDS_DYNAMIC_RELOC` architectures with GCC vectorization
+
+For added fun, GCC vectorization can introduce GOT-like loads.
+Consider the addresses of two hidden symbols, like `__ehdr_start` and `_end`.
+GCC may generate a vector load using a constant pool that requires dynamic relocation.
+
+```c
+  _dl_rtld_map.l_map_start = (ElfW(Addr)) &__ehdr_start;
+  _dl_rtld_map.l_map_end = (ElfW(Addr)) _end;
+```
+
+```asm
+// GCC 14.x -fno-strict-aliasing
+	movq	.LC0(%rip), %xmm0
+...
+
+	.section	.data.rel.ro.local,"aw"
+	.align 8
+.LC0:
+	.quad	__ehdr_start
+	.hidden	__ehdr_start
+	.hidden	_end
+```
+
+If the vector load is reordered before `ELF_DYNAMIC_RELOCATE`, it may load an incorrect value.
+This issue might not cause an immediate crash but could lead to problems later when link map information is accessed, such as during a `backtrace`.
+For details on how this bug was discovered, see <https://blog.sergiodj.net/posts/gcc-glibc-stack-unwinding-relocations-bug/>.
+
+To address this, glibc 2.42 introduced inline assembly compiler barriers (<https://sourceware.org/bugzilla/show_bug.cgi?id=33088>).
+
 ## musl rtld
 
 musl rtld has a clear separation of 3 stages.

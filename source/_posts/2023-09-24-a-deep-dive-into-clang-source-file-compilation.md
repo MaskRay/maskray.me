@@ -623,22 +623,31 @@ After instruction selector, there are machine SSA optimizations, register alloca
 
 ```
 TargetPassConfig::addMachinePasses
-  TargetPassConfig::addMachineSSAOptimization
+  TargetPassConfig::addMachineSSAOptimization  # -O1 or above
     addPass(&OptimizePHIsLegacyID);
     addPass(&StackColoringLegacyID);
     addPass(&MachineCSELegacyID);
     addPass(&LocalStackSlotAllocationID);
     addILPOpts();
+      // Many targets enable EarlyIfConversion
     addPass(&PeepholeOptimizerLegacyID);
+  // RISCV has createRISCVPreRAExpandPseudoPass.
   TargetPassConfig::addPreRegAlloc
   TargetPassConfig::addOptimizedRegAlloc
   TargetPassConfig::addPostRegAlloc
   addPass(createPrologEpilogInserterPass());
   TargetPassConfig::addMachineLateOptimization
   addPass(&ExpandPostRAPseudosID)
+  // RISCVPostRAExpandPseudoInsts is in addPreSched2
   TargetPassConfig::addPreSched2
+  // Some target replace PostRAScheduler with PostMachineScheduler.
+  addPass(&PostRASchedulerID);
+  TargetPassConfig::addBlockPlacement  # -O1 or above
   TargetPassConfig::addPreEmitPass
-  // basic block section related passes
+  createBasicBlockSectionsPass
+  // kcfi indirect call checks.
+  // RISCV has createRISCVExpandPseudoPass.
+  // X86 has security hardening passes.
   TargetPassConfig::addPreEmitPass2
 ```
 

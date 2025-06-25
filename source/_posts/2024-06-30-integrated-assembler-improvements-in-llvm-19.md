@@ -45,14 +45,7 @@ Furthermore, I [introduced the "current fragment" concept](https://github.com/ll
 I have also simplified and optimized fragment offset computation:
 
 * [`[MC] Relax fragments eagerly`](https://github.com/llvm/llvm-project/commit/9d0754ada5dbbc0c009bcc2f7824488419cc5530)
-
-<!-- 
-* [`[MC] Compute fragment offsets eagerly`](https://github.com/llvm/llvm-project/commit/be5a845e4c29aadb513ae6e5e2879dccf37efdbb)
-reverted due to -O0 split3.i code size increase
--->
-
-Previously, calculating fragment offsets happened lazily in the `getFragmentOffset` function.
-All sections were iteratively relaxed until they all converged. This process was inefficient as the slowest section determined the number of iterations for all others, resulting in extra calculations.
+* [`[MC] Relax MCFillFragment and compute fragment offsets eagerly`](https://github.com/llvm/llvm-project/commit/742ecfc13e8aa34cfff2900e31838f657fcafe30), a June 2025 reland of a July 2024 patch.
 
 Previously, fragment offset computation was lazily performed by `getFragmentOffset`.
 The section that converged the slowest determined other sections' iteration steps, leading to some unneeded computation.

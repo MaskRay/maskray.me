@@ -485,6 +485,7 @@ Object file specific parsers (e.g. `ELFAsmParser`) and architecture-specific par
 Both the `MCAsmParser` and  `MCTargetAsmParser` objects can call `MCStreamer` API to emit assembly code or machine code.
 
 For an instruction parsed by the `MCTargetAsmParser`, if the streamer is an `MCAsmStreamer`, the `MCInst` will be pretty-printed by a target-specific `MCInstPrinter`.
+(`MCInstPrinter` is also used by disassembler tools like llvm-objdump, so it does not need a `MCAssembler`.)
 If the streamer is an `MCELFStreamer` (other object file formats are similar), `MCELFStreamer::emitInstToData` will use `${Target}MCCodeEmitter` from LLVM${Target}Desc to encode the `MCInst`, emit its byte sequence, and records needed relocations (`MCAssembler` and `ELFObjectWriter`).
 An `ELFObjectWriter` object is used to write the relocatable object file.
 
@@ -577,6 +578,18 @@ foo: c.beqz a0, foo
 ```
 
 With `clang --target=riscv64 -c -mrelax-all`, LLVM integrated assembler splits the instruction into two: `bnez a0, .+6; j foo`.
+
+A few tests help test the fragment relaxation framework.
+```
+# Derived from Linux kernel https://github.com/llvm/llvm-project/issues/100283
+llvm/test/MC/ELF/layout-interdependency2.s
+
+# Derived from sqlite
+llvm/test/MC/ELF/relax-branch.s
+
+# Derived from Linux kernel in 2020
+llvm/test/MC/X86/relax-offset.s
+```
 
 ### Generated debug information
 

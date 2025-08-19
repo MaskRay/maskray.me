@@ -8,22 +8,11 @@ tags: [assembler,llvm]
 In my previous post, [LLVM integrated assembler: Improving MCExpr and MCValue](/blog/2025-04-06-llvm-integrated-assembler-improving-mcexpr-mcvalue) delved into enhancements made to LLVM's internal MCExpr and MCValue representations.
 This post covers recent refinements to MC, focusing on expression resolving and relocation generation.
 
-## Symbol equating directives
-
-In GNU Assembler, the following directives are called symbol equating. I have re-read its documentation <https://sourceware.org/binutils/docs/as.html>.
-Yes, it uses "equating" instead of "assignment" or "definition".
-
-* `symbol = expression` (multiple `=` on the same symbol is allowed)
-* `.set symbol, expression` (equivalent to `=`)
-* `.equ symbol, expression` (equivalent to `=`) 
-* `.equiv symbol, expression` (redefinition leads to errors)
-* `.eqv symbol, expression` (lazy evaluation, not implemented in LLVM integrated assembler)
-
 <!-- more -->
 
 ## Preventing cyclic dependencies
 
-Equated symbols may form a cycle, which is not allowed.
+[Equated symbols](/blog/2023-05-08-assemblers#symbol-equating-directives) may form a cycle, which is not allowed.
 
 ```asm
 # CHECK: [[#@LINE+2]]:7: error: cyclic dependency detected for symbol 'a'
@@ -150,7 +139,7 @@ And addressed them with
 
 ## Expression resolving and reassignments
 
-`=` and its equivalents (`.set`, `.equ`) allow a symbol to be equated multiple times.
+`=` and its equivalents (`.set`, `.equ`) allow a symbol to be [equated](/blog/2023-05-08-assemblers#symbol-equating-directives) multiple times.
 This means when a symbol is referenced, its current value is captured at that moment, and subsequent reassignments do not alter prior references.
 
 ```asm

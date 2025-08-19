@@ -23,6 +23,14 @@ On the IBM AIX platform, the AIX assembler is used. In 2019, IBM developers star
 
 On the IBM z/OS platform, the IBM High Level Assembler (HLASM) is used. In 2021, IBM developers started to modify LLVM integrated assembler to support the HLASM syntax.
 
+## Concepts
+
+Sections are named, contiguous blocks of code or data within an object file.
+They allow you to logically group related parts of your program.
+The assembler places code and data into these sections as it processes the source file.
+
+Symbols are names that represent memory addresses or values.
+
 <!-- more -->
 
 ## Instruction set architectures
@@ -175,8 +183,6 @@ Some compilers provide additional variants of inline assembly. Here are some rel
 * Jai <https://jai.community/t/inline-assembly/139>
 * Nim <https://nim-lang.github.io/Nim/manual.html#statements-and-expressions-assembler-statement>
 
-My most wanted feature for GCC inline assembly is [x86: Support a machine constraint to get raw symbol name](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105576).
-
 Clang concatenates module-level inline assembly and emits it before functions, while GCC retains the order among functions.
 ```
 % cat x.c
@@ -204,7 +210,16 @@ In the binutils-gdb repository, `opcodes/` contains information on how to assemb
 
 `gas/read.c:potable` defines directives available to all targets. `gcc/config/obj-elf.c:elf_pseudo_table` defines ELF-specific directives. An architecture can define its own directives.
 
-### Symbol equates
+### Symbol equating directives
+
+In GNU Assembler, the following directives are called symbol equating. I have re-read its documentation <https://sourceware.org/binutils/docs/as.html>.
+Yes, it uses "equating" instead of "assignment" or "definition".
+
+* `symbol = expression` (multiple `=` on the same symbol is allowed)
+* `.set symbol, expression` (equivalent to `=`)
+* `.equ symbol, expression` (equivalent to `=`)
+* `.equiv symbol, expression` (redefinition leads to errors)
+* `.eqv symbol, expression` (lazy evaluation, not implemented in LLVM integrated assembler)
 
 `.equiv` equates a symbol to an expression and reports an error if the symbol was already defined.
 
@@ -364,7 +379,9 @@ GCC's `[[gnu::weakref]]` attribute, as used in runtime library headers like `lib
 
 To support RISC-V linker relaxation, `gcc/config/tc-riscv.c` starts a new fragment after a relaxable instruction.
 
-A `struct frag` represents a code fragment that contains some known number of bytes, followed by some unknown number of bytes.
+Section fragments are allocated using a gnulib `obstack`.
+A `struct frag` represents a fragment that contains a fixed number of bytes (like LLVM `MCDataFragment`), followed by some unknown number of bytes determined by the fragment type and other information.
+The fixed part is stored in a fake flexible array member `char fr_literal[1];` within the `frag` structure.
 
 A fixup (`struct fix`) describes a location of size 1/2/4/8 within a fragment that will be changed at write time.
 The location will be changed to `value(fx_addsy)-value(fx_subsy)+fx_offset`.
@@ -390,6 +407,7 @@ The function is called to preprocess the input. A line like `# 123 filename` wil
 `relax_seg` iterates over fragments and tries to relax them with `relax_segment`.
 
 `size_seg` finalizes section sizes.
+`cvt_frag_to_fill` is called to convert fragments with a variable-size tail to fill fragments, and generate ADD/SUB relocations for RISC-V dwarf2dbg.
 The pass also calls `tc_frob_section` and `obj_frob_section`.
 `config/obj-coff.c` defines  `obj_frob_section` to round up section sizes and create auxiliary symbols.
 
@@ -421,7 +439,7 @@ It also handles `BFD_RELOC_RISCV_SUB8, BFD_RELOC_RISCV_SUB16, BFD_RELOC_RISCV_SU
 
 Set up symbol table.
 Symbols equated to an undefined symbol are removed.
-ELF defines the `obj_frob_symbol` hook (`elf_frob_symbol`) to set `st_size` and visibility.
+ELF defines the `obj_frob_symbol` hook (`elf_frob_symbol`) to set `st_size`, visibility, and the [versioned name](/blog/2020-11-26-all-about-symbol-versioning).
 Symbols equated to undefined or common symbols are removed.
 Unresolved symbols (`symbol_resolved_p`) lead to errors.
 
@@ -517,11 +535,27 @@ For ELF targets, the `MCContext::createLinkerPrivateTempSymbol` function creates
 TODO
 
 ```
-MCAssembler::layout
-  MCAssembler::handleFixup
-    ELFObjectWriter::recordRelocation
-ELFWriter::writeSectionData
+MCAssembler::Finish
+  MCAssembler::layout
+    MCAssembler::layoutSection
+    MCAssembler::relaxOnce
+    MCAssembler::evaluateFixup
+      X86AsmBackend::applyFixup
+        ELFObjectWriter::recordRelocation
+  ELFObjectWriter::writeObject
+    ELFWriter::writeSectionData
 ```
+
+Both the GNU assembler and LLVM integrated assembler utilize multiple passes during assembly, with several key phases:
+
+* Parsing phase: The assembler constructs section fragments. These fragments represent sequences of regular instructions or data, span-dependent instructions, alignment directives, and other elements.
+* Section layout phase: `MCAssembler::layout` arranges each section by assigning precise offsets to its fragments - instructions, data, or other directives (e.g., `.line`, `.uleb128`).
+  This process calculates fragment sizes and adjusts for alignment, ultimately finalizing the offsets for all symbols within the section.
+  The layout process involves two main passes that are called in a pair:
+  - `layoutSection`: This pass assigns initial offsets to each fragment. This is also called when `relaxOnce` has made any change.
+  - `relaxOnce`: This pass evaluates span-dependent fragments but does not update their offsets. This ensures that label differences are calculated using offsets from the same iteration.
+* Write phase
+  - [Relocation decision phase](/blog/2025-03-16-relocation-generation-in-assemblers): The assembler evaluates fixups and, if necessary, updates the content of the fragments.
 
 Some expressions cannot use relocations (e.g., `.size` and `.fill` directives). They set `InSet` as a parameter in various methods in `llvm/lib/MC/`.
 This makes expression evaluation different based on the context and should be generally avoided if possible.
@@ -608,10 +642,9 @@ For the other entries, `MCObjectStreamer::emitDwarfAdvanceLineAddr` selects one 
 
 There was a "fast path" (`if (AddrDelta->evaluateAsAbsolute(Res, getAssemblerPtr()))`) to emit a byte sequence instead of a `MCDwarfLineAddrFragment`.
 
-### Symbol equates
+### Symbol equating directives
 
-GNU Assembler supports symbol reassignment via `.set, `.equ`, or `=`.
-Before May 2025, LLVM's integrated assembler only allowed reassignment for `MCConstantExpr` cases, as it struggled with scenarios like:
+Before [May 2025](/blog/2025-05-26-llvm-integrated-assembler-improving-expressions-and-relocations), LLVM's integrated assembler only allowed reassignment for `MCConstantExpr` cases, as it struggled with scenarios like:
 
 ```
 .data
@@ -622,14 +655,6 @@ x = .-.data
 .set x,.-.data
 .long x         // reference the third instance
 ```
-
-Between two assignments, it could not ensure that a reference binds to the earlier assignment.
-LLVMMC used `MCSymbol::IsUsed` and other conditions in `parseAssignmentExpression` to reject potentially unsafe reassignments, but certain `MCConstantExpr` uses could be unsafe as well.
-
-Note: GNU Assembler used to have a similar problem (<https://sourceware.org/bugzilla/show_bug.cgi?id=288>), which was addressed in 2005.
-
-In the Linux kernel, [powerpc/64/asm: Do not reassign labels](https://git.kernel.org/linus/d72c4a36d7ab560127885473a310ece28988b604) removed a reassignment pattern to allow LLVM integrated assembler.
-I have implemented `.set` reassignment in [May 2025](https://github.com/llvm/llvm-project/commit/e015626f189dc76f8df9fdc25a47638c6a2f3feb).
 
 ### Expression evaluation
 

@@ -32,7 +32,7 @@ Let's go through various linker passes and see how relocatable linking changes t
 
 Only relocatable object files, archive files, and linker scripts are allowed as input.
 To support LTO, another kind of files may be allowed as well.
-Other files lead to an error.
+Other files lead to an error. In another word, `-r` implies `-static` (`-Bstatic`).
 
 ```
 % ld -r a.o b.so

@@ -4,7 +4,7 @@ author: MaskRay
 tags: [assembler,binutils,llvm,linker,riscv]
 ---
 
-Updated in 2023-09.
+Updated in 2025-07.
 
 This article introduces RISC-V linker relaxation and describes the downside.
 
@@ -167,24 +167,108 @@ ld.lld [got](https://reviews.llvm.org/D143673) global pointer relaxation in Apri
 
 ### Alignment directives
 
-For an alignment directive, the assembler emits padding bytes (NOP instructions) and creates an `R_RISCV_ALIGN` relocation pointing to the beginning of the padding bytes.
-The instruction that needs to be aligned is located at the offset of `R_RISCV_ALIGN` plus its addend.
-The linker is responsible for deleting some bytes to ensure the location aligned after relaxing preceding instructions.
+The padding size of an alignment directive depends on its section offset, which can change during linker relaxation if a preceding instruction's size changes.
+To enable the linker to adjust this alignment, the assembler inserts padding bytes (NOP instructions) and generates an `R_RISCV_ALIGN` relocation pointing to their beginning.
+The NOP start is designated by the `R_RISCV_ALIGN` offset while the instruction to be aligned is located at the `R_RISCV_ALIGN` offset plus its addend.
+
 ```asm
 call fun      # 8 bytes
 .balign 16    # NOPs with an R_RISCV_ALIGN relocation
 mv a1, a0
 ```
 
-The number of padding bytes is dependent on whether RVC (compressed instructions) is effective.
-A `.balign $align` directive results in `$align-2` bytes when RVC is enabled and otherwise `$align-4` bytes.
-The number is carefully chosen to the maximum bytes that may be kept after linking. Conceptually the linker only needs to delete bytes, not add new bytes.
+Assembler behavior:
 
-However, the design choise is not friendly to the linker when linker relaxation is disabled (`ld --no-relax`).
+* Without linker relaxation, no R_RISCV_ALIGN relocation is generated.
+* When linker relaxation is enabled:
+  + If the alignment is larger than the minimum instruction size (2 bytes if `LLVM>=22 || enabled(RVC)`), generate `$alignment-$min_instruction_size` bytes of NOPS. These NOPs are associated with an `R_RISCV_ALIGN` relocation, using `$alignment - minimum_instruction_size` as the addend.
+  + Otherwise (if the alignment is less than or equal to the minimum instruction size), no `R_RISCV_ALIGN` relocation is generated.
+
+The linker is responsible for deleting bytes to maintain correct alignment after relaxing preceding instructions.
+The linker only needs to delete bytes, not add new bytes.
+
+In non-RVC code, the minimum instruction size is 4. Since LLVM 22 (<https://github.com/llvm/llvm-project/pull/150816>), when the alignment exceeds 2, the assembler inserts `$alignment-2` bytes of NOPs, even in non-RVC code.
+This enables non-RVC code following RVC code to handle a 2-byte adjustment:
+
+```asm
+.globl _start
+_start:
+// GNU ld can relax this to  6505          lui     a0, 0x1
+// LLD hasn't implemented this transformation.
+  lui a0, %hi(foo)
+
+.option push
+.option norelax
+.option norvc
+// Now we generate R_RISCV_ALIGN with addend 2, even if this is a norvc region.
+.balign 4
+b0:
+  .word 0x3a393837
+.option pop
+foo:
+```
+
+**Relocatable linking challenge with `R_RISCV_ALIGN`**
+
+A specific issue arises in relocatable linking when a section that _does not_ use linker relaxation is preceded by a section that _does_.
+
+Without linker relaxation enabled for a particular relocatable file or section (e.g., using `.option norelax`), the assembler will not generate `R_RISCV_ALIGN` relocations for alignment directives.
+This becomes problematic in a two-stage linking process:
+
+```sh
+cat > a.s <<e
+.globl _start
+_start:
+  call foo
+
+.section .text1,"ax"
+.globl foo
+foo:
+e
+cat > b.s <<e
+.option push
+.option norelax
+# Assembler will not generate R_RISCV_ALIGN here
+.balign 8
+b0:
+  .word 0x3a393837
+.option pop
+e
+clang --target=riscv64 -mrelax -c a.s b.s
+
+# Single-stage linking
+ld.lld a.o b.o -o ab
+
+# Two-stage linking
+ld.lld -r a.o b.o -o ab.o
+ld.lld ab.o -o ab.r
+```
+
+When `ab.o` is linked into an executable, the preceding relaxed section (`a.o`'s content) might shrink.
+Since there's no `R_RISCV_ALIGN` relocation in `b.o` for the linker to act upon, the `.word 0x3a393837` data in `b.o` may end up unaligned in the final executable.
+This produces an output that differs from a direct, single-stage link of `ld.lld a.o b.o -o ab`, which would correctly align the data.
+
+This issue likely doesn't lead to significant problems in practice, primarily due to these factors:
+
+* Infrequent use of relocatable linking (`ld -r`).
+* Rarity of data within text sections. It's even less frequent for such data to reside at the beginning of a section, or so early in a section that there isn't any preceding linker-relaxable instruction.
+
+To address the issue, I am modifying LLD to synthesize an `R_RISCV_ALIGN` relocation at the beginning of a text section with an explicit alignment requirement. it would provide the linker with the necessary handle to adjust that section's start address and potentially insert or remove padding to maintain the desired alignment.
+
+GNU ld issue: <https://sourceware.org/bugzilla/show_bug.cgi?id=33236>
+
+**Linker unfriendly**
+
+The design choise is not friendly to the linker when linker relaxation is disabled (`ld --no-relax`).
 `$align-2` or `$align-4` bytes do not necessarily make the following instruction aligned.
 Therefore, a linker still needs to process `R_RISCV_ALIGN` relocations and delete some bytes, even if `R_RISCV_RELAX` relocations are ignored.
 
-ld.lld prior to 15.0 does not implement linker relaxation, and conservatively bails out with an error like `error: relocation R_RISCV_ALIGN requires unimplemented linker relaxation`.
+ld.lld prior to 15.0 did not implement linker relaxation, and conservatively bailed out with an error like `error: relocation R_RISCV_ALIGN requires unimplemented linker relaxation`.
+
+### Conservative assembler behaviors
+
+Assemblers can exhibit conservative behavior by generating excessive relocations.
+For example, ALIGN relocations before the first linker-relaxable instruction are redundant. I'm addressing this with a pending change to remove them: <https://github.com/llvm/llvm-project/pull/150816>.
 
 ### Linker friendly `R_RISCV_ALIGN`
 

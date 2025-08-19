@@ -685,6 +685,8 @@ This property appears to be satisfied in the Linux kernel.
 See [cfi: Switch to -fsanitize=kcfi](https://git.kernel.org/linus/89245600941e4e0f87d77f60ee269b5e61ef4e49) for the Linux kernel implementation.
 The kernel expects a specific conditional branch instruction and a specific trap instruction.
 
+[`__attribute__((cfi_salt("string")))`](https://github.com/llvm/llvm-project/pull/141846) can be specified to mix a salt into the type hash.
+
 ### `-fsanitize=kcfi` implementation notes
 
 To emit `.kcfi_traps` and a preferred trap instruction, the instrumentation cannot be done purely in ClangCodeGen. Instead, the following scheme is used:

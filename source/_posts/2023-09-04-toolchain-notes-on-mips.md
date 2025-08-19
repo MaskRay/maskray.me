@@ -413,6 +413,16 @@ GNU ld has quite involved merging strategy for this section.
 
 TODO
 
+## `.set noreorder` directive
+
+By default the assembler does smart multi-instruction rewriting including:
+
+* filling a branch or delay slot automatically by reordering the instructions around it.
+* inserting nops to avoid data hazards
+* working around errata.
+
+The `.set noreorder` directive disables the behavior.
+
 ## Relocations
 
 <https://web.archive.org/web/20140908233719/https://dmz-portal.mips.com/wiki/MIPS_relocation_types>

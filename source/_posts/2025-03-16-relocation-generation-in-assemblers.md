@@ -444,9 +444,9 @@ case FK_Data_2:
 
 // Handle target-specific MCFixupKind.
 case AArch64::fixup_aarch64_add_imm12:
-  if (RefKind == AArch64MCExpr::VK_DTPREL_HI12)
+  if (RefKind == AArch64::S_DTPREL_HI12)
     return R_CLS(TLSLD_ADD_DTPREL_HI12);
-  if (RefKind == AArch64MCExpr::VK_TPREL_HI12)
+  if (RefKind == AArch64::S_TPREL_HI12)
     return R_CLS(TLSLE_ADD_TPREL_HI12);
   ...
 }
@@ -455,13 +455,20 @@ case AArch64::fixup_aarch64_add_imm12:
 `MCAssembler::evaluateFixup` and `ELFObjectWriter::recordRelocation` record a relocation.
 
 ```cpp
+// MCAssembler::evaluateFixup
 Evaluate `const MCExpr *Fixup::Value` to a relocatable expression.
 Determine the fixup value. Adjust the value if FKF_IsPCRel.
 If the relocatable expression is a constant, treat this fixup as resolved.
 
-if (IsResolved && (is_reloc_directive || Backend.shouldForceRelocation(...)))
+if (IsResolved && is_reloc_directive)
   IsResolved = false;
+Backend.applyFixup(...)
 
+
+
+// applyFixup
+if (...)
+  IsResolved = false;
 if (!IsResolved) {
   // For exposition I've inlined ELFObjectWriter::recordRelocation here.
   // the function roughly maps to GNU Assembler's `md_apply_fix` and `tc_gen_reloc`,
@@ -470,7 +477,6 @@ if (!IsResolved) {
   Relocations.push_back(...)
 }
 // Write a value to the relocated location. When using relocations with explicit addends, the function is a no-op when `IsResolved` is true.
-Backend.applyFixup(...)
 ```
 
 `FKF_IsPCRel` applies to fixups whose relocation operations look like `S - P + A`, like branches and PC-relative operations, but not to GOT-related operations (e.g., `GDAT - P + A`).
@@ -485,8 +491,9 @@ MCExpr
   MCSymbolRefExpr: VariantKind, Symbol
   MCUnaryExpr: Op, Expr
   MCBinaryExpr: Op, LHS, RHS
-  MCTargetExpr
-    AArch64MCExpr: VariantKind, Expr
+  MCTargetExpr:
+    X86MCExpr: x86 register
+  MCSpecifierExpr: expression with a relocation specifier
 ```
 
 `MCSymbolRefExpr::VariantKind` enums the relocation specifier, but it's a poor fit:
@@ -506,8 +513,7 @@ MCBinaryExpr
 Here, the specifier attaches only to the LHS, leaving the full result uncovered. This awkward design demands workarounds.
 
 * Parsing `a+4@got` exposes clumsiness. After `AsmParser::parseExpression` processes `a+4`, it detects `@got` and retrofits it onto `MCSymbolRefExpr(a)`, which feels hacked together.
-* PowerPC's `@l` `@ha` optimization needs `PPCAsmParser::extractModifierFromExpr` and `PPCAsmParser::applyModifierToExpr` to convert a `MCSymbolRefExpr` to a `PPCMCExpr`.
-* Many targets (e.g., X86) use `MCValue::getAccessVariant` to grab LHS's specifier, though `MCValue::RefKind` would be cleaner.
+* PowerPC's `@l` `@ha` optimization needs `PPCAsmParser::extractSpecifier` and `PPCAsmParser::applySpecifier` to convert a `MCSymbolRefExpr` to a `MCSpecifierExpr`.
 
 Worse, leaky abstractions that  `MCSymbolRefExpr` is accessed widely in backend code introduces another problem:
 while `MCBinaryExpr` with a constant RHS mimics `MCSymbolRefExpr` semantically, code often handles only the latter.

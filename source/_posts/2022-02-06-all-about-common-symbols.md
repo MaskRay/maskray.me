@@ -415,3 +415,44 @@ It is an interposable linkage and some optimizations are suppressed. For example
 
 * InstCombine assumes that the addresses of a `common global i8` and an `external global i32` may be the same.
 * `llvm.objectsize` intrinsic does not know the size. This may lead to conservative assumptions for some `_chk` functions.
+
+## Processor-specific COMMON symbols
+
+### AMDGPU LDS symbols
+
+In LLVM, the AMDGPU target uses the address space 3 to indicate the hardware Local Data Store (LDS), which is automatically allocated when the hardware creates the wavefronts of a work-group, and freed when all the wavefronts of a work-group have terminated.
+```cpp
+  LOCAL_ADDRESS = 3,    ///< Address space for local memory.
+```
+
+Variables in this address space lower to a special COMMON symbol with the section index `SHN_AMDGPU_LDS` instead of `SHN_COMMON`. (<https://reviews.llvm.org/D61493>)
+The assembly syntax is `.amdgpu_lds sym,size,align`.
+
+In 2019, the [assembler implementation](<https://reviews.llvm.org/D61493>) inappropriately introduced a new symbol kind, `SymContentsTargetCommon`, which has been [removed](https://github.com/llvm/llvm-project/commit/aa96e20dcefa7d73229c98a7d2727696ff949459) by me.
+
+### Hexagon COMMON symbols
+
+[Qualcomm Hexagon](https://en.wikipedia.org/wiki/Qualcomm_Hexagon) uses distinct section indexes for small-sized COMMON symbols. 
+These symbols are allocated to small BSS sections and are accessed using a global pointer.
+Qualcomm's [eld linker](https://github.com/qualcomm/eld), open-sourced in 2025, uses these section indexes.
+
+* `SHN_HEXAGON_SCOMMON_1`
+* `SHN_HEXAGON_SCOMMON_2`
+* `SHN_HEXAGON_SCOMMON_4`
+* `SHN_HEXAGON_SCOMMON_8`
+
+This design choice seems redundant as the linker could just use the symbol's `st_size` member to determine which small BSS section to place it in.
+
+## `.lcomm` directive
+
+`.lcomm sym,size` provides a concise way to define a local symbol in the `.bss` section.
+The defined symbol is *not* a COMMON symbol.
+
+## WebAssembly does not support COMMON symbols
+
+[A proposed LLVM workaround patch](https://github.com/llvm/llvm-project/pull/151478) aimed to implement COMMON symbols using weak symbols, but I rejected it for the following reasons:
+
+* The fundamental requirement of COMMON symbols-where the linker allocates space to accommodate the largest symbol size-cannot be emulated using weak symbols.
+* Introducing another method for generating weak symbols could lead to confusion.
+
+For use cases where the "largest size" property is not needed, a COMDAT section group offers a viable alternative to achieve similar functionality.

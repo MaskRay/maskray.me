@@ -117,7 +117,7 @@ On an architecture with relatively sufficient registers, e.g. x86-64, the perfor
 
 * `-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer`: all functions maintain frame pointers.
 * `-fno-omit-frame-pointer -momit-leaf-frame-pointer`: all non-leaf functions maintain frame pointers. Leaf functions don't maintain frame pointers.
-* `-fomit-frame-pointer`: all functions maintain frame pointers. `arm*-apple-darwin` and `thumb*-apple-darwin` don't support the option.
+* `-fomit-frame-pointer`: all functions omit frame pointers. `arm*-apple-darwin` and `thumb*-apple-darwin` don't support the option.
 
 For `-O0`, most targets default to `-fno-omit-frame-pointer`.
 

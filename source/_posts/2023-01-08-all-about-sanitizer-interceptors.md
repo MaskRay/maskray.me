@@ -4,6 +4,8 @@ author: MaskRay
 tags: [llvm,sanitizer]
 ---
 
+Updated in 2025-08.
+
 Many sanitizers want to know every function in the program.
 User functions are instrumented and therefore known by the sanitizer runtime.
 For library functions, some (e.g. mmap, munmap, memory allocation/deallocation functions, longjmp, vfork) need special treatment.
@@ -328,7 +330,7 @@ In the old runtime (tsan v2), 8 aligned user bytes are mapped to a shadow cell o
 The representation uses 13 bits to record a thread ID (up to 8192 threads are supported), and 42 bits to record a vector clock timestamp.
 
 In the new runtime (tsan v3), 8 aligned user bytes are mapped to a shadow cell of 16 bytes, which contains 4 shadow values.
-A shadow value records the bitmask of accessed bytes (8 bites), a thread slot ID (8 bits), a vector clock timestamp (14 bites), is\_read (1 bit), is\_atomic (1 bit).
+A shadow value records the bitmask of accessed bytes (8 bits), a thread slot ID (8 bits), a vector clock timestamp (14 bites), is\_read (1 bit), is\_atomic (1 bit).
 The shrinking of time is made available because the timestamp increments more slowly (only on atomic releases, mutex unlocks, thread creation/destruction).
 
 At the start of an interceptor, the runtime calls `cur_thread_init` and retrieves the thread state and the return address of the current function.
@@ -340,7 +342,7 @@ pthread mutex functions such as `pthread_mutex_{init,destroy,lock,trylock,timedl
 
 Most libc functions do not have synchronization semantics.
 
-An non-special function which is neither instrumented nor intercepted just leads to fewer detected errors.
+A non-special function that is neither instrumented nor intercepted just leads to fewer detected errors.
 
 ### MemorySanitizer
 
@@ -410,6 +412,12 @@ Scudo is a user-mode memory allocator designed to be resilient against heap-rela
 [GWP-ASan](https://llvm.org/docs/GwpAsan.html) uses Scudo as the main allocator and lets Scudo hand over sampled memory allocations to its own memory allocator.
 
 In Scudo, only memory allocator related functions are intercepted.
+
+### Realtime Sanitizer
+
+For functions marked with the `[[clang::nonblocking]]` attribute, Realtime Sanitizer identifies calls to library functions that may have non-deterministic execution time.
+
+Numerous library functions are intercepted.
 
 ### MemProf
 

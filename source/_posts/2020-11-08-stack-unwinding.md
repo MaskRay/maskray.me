@@ -499,7 +499,7 @@ ld.lld has some special handling for `.eh_frame`:
 
 * `-M` requires special code
 * `--gc-sections`. `--gc-sections` occurs before `.eh_frame` deduplication/GC.
-* For `-r` and `--emit-relocs`, a relocation from `.eh_frame` to a `STT_SECTION` symbol in a discarded section (due to COMDAT group rule) should be allowed (normally such a `STB_LOCAL` relocation from outside of the group is disallowed).
+* A relocation from `.eh_frame` to a `STT_SECTION` symbol in a discarded section (due to COMDAT group rule) is permitted. Normally such a `STB_LOCAL` relocation from outside of the group is disallowed.
 
 When a linker processes `.eh_frame`, it needs to conceptually split `.eh_frame` into CIE/FDE.
 ld.lld splits `.eh_frame` before marking sections as live for `--gc-sections`. ld.lld handles CIE and FDE differently:
@@ -740,6 +740,12 @@ To unwind a stack frame, `unwind_next_frame`
 In construction.
 
 As an intended format improving on `.eh_frame`, the saving appears too small.
+
+## SFrame
+
+TODO
+
+<https://blogs.oracle.com/linux/post/beyond-eh-frame-frame-pointers-the-technical-underpinnings-of-sframe>
 
 ### LLVM
 

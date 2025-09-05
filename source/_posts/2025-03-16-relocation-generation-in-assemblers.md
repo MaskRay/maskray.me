@@ -264,7 +264,12 @@ adrp    x0, :got:var
 ldr     x0, [x0, :got_lo12:var]
 ```
 
-Applying this syntax to data directives, however, could create parsing ambiguity. In both GNU Assembler and LLVM, `.word :plt:fun` would be interpreted as `.word: plt: fun`, treating `.word` and `plt` as labels, rather than achieving the intended meaning.
+Applying this syntax to data directives or instructions' first operands, however, could create parsing ambiguity. In both GNU Assembler and LLVM, `.word :plt:fun` would be interpreted as `.word: plt: fun`, treating `.word` and `plt` as labels, rather than achieving the intended meaning.
+
+One idea is to `#` for disambiguitation:
+```asm
+.word #:gotpcrel:var
+```
 
 **Recommendation**
 

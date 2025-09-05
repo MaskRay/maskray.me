@@ -544,11 +544,11 @@ GNU ld's one RW `PT_LOAD` layout makes the alignment increase the file size. max
 
 lld utilitizes two RW `PT_LOAD` program headers: one for RELRO sections and the other for non-RELRO sections.
 Although this might appear unusual initially, it eliminates the need for alignment padding as seen in GNU ld's layout.
-I implemented the current layout in 2019 (<https://reviews.llvm.org/D58892>).
-The end of the `PT_GNU_RELRO` segment and the associated RW `PT_LOAD` segment is [padded to a common-page-size boundary](https://github.com/llvm/llvm-project/pull/66042).
-This is achieved by adding a padding section `.relro_padding` like mold.
+Key changes:
 
-Before LLD 18, there is an issue that runtime_page_size < common-page-size does not work.
+* <https://reviews.llvm.org/D58892> switched from `PT_LOAD(PT_GNU_RELRO(.data.rel.ro .bss.rel.ro) .data .bss)` to `PT_LOAD(PT_GNU_RELRO(.data.rel.ro .bss.rel.ro)) PT_LOAD(.data. .bss)`.
+* The end of the `PT_GNU_RELRO` segment and the associated RW `PT_LOAD` segment is [padded to a common-page-size boundary](https://github.com/llvm/llvm-project/pull/66042). The padding section `.relro_padding` is like mold.
+  Before LLD 18, there is an issue that runtime_page_size < common-page-size does not work.
 
 The layout used by mold is similar to that of lld.
 In mold's case, the end of `PT_GNU_RELRO` is padded to max-page-size by appending a `SHT_NOBITS` `.relro_padding` section.
@@ -557,7 +557,7 @@ However, when the system page size is less than max-page-size, the map from the 
 
 In my opinion, losing protection for the last page when the runtime page size is larger than common-page-size is not really an issue.
 Double mapping a page of up to max-common-page for the protection could cause undesired VM waste.
-Protecting `.got.plt` is the main purpose of `-z now`. Protecting a small portion of `.data.rel.ro` doesn't really make the program more secure, given that `.data` and `.bss` are so huge and full of attach targets.
+Protecting `.got.plt` is the main purpose of `-z now`. Protecting a small portion of `.data.rel.ro` doesn't really make the program more secure, given that `.data` and `.bss` are so huge and full of attack targets.
 If users are really anxious, they can set common-page-size to match their system page size.
 
 GNU ld's internal linker scripts place RELRO sections between `DATA_SEGMENT_ALIGN` and `DATA_SEGMENT_RELRO_END` (built-in functions).

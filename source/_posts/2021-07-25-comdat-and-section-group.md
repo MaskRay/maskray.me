@@ -96,11 +96,60 @@ In LLVM IR, use `comdat nodeduplicate` to generate such a COMDAT group.
 
 In LLVM, `llvm/lib/Linker` performs COMDAT deduplication for regular LTO. The deduplication is only performed if the COMDAT key has a non-local linkage.
 
-#### Group signature localization
+#### Referencing a local symbol from outside the group
 
-If a non-local symbol (e.g. `__llvm_retpoline_r11`) is defined relative to a section in a group, and referenced from outside the section group, it cannot be localized. The generic ABI says:
+The generic ABI specifies:
 
 > A symbol table entry with STB_LOCAL binding that is defined relative to one of a group's sections, and that is contained in a symbol table section that is not part of the group, must be discarded if the group members are discarded. References to this symbol table entry from outside the group are not allowed.
+
+In the following example, the local symbol `foo` is used as the COMDAT group signature. The group in `b.o` is discarded per the COMDAT deduplication rule. `b.o:.metadata` is a reference outside the prevailing group (the group within `a.o`), which is rejected by LLD.
+
+```sh
+cat > ./a.s <<'eof'
+.globl _start
+_start:
+  call .text.foo
+
+.section .text.foo,"axG",@progbits,foo,comdat
+foo:
+  ret
+eof
+cat > ./b.s <<'eof'
+.section .text.foo,"axG",@progbits,foo,comdat
+foo:
+  nop
+  ret
+
+.section .metadata,"a"
+  .quad foo
+eof
+clang -c a.s b.s
+```
+
+```
+% ld.lld a.o b.o
+ld.lld: error: relocation refers to a symbol in a discarded section: foo
+>>> defined in b.o
+>>> referenced by b.o:(.metadata+0x0)
+```
+
+This rule detects misuse of local symbols that are discarded during COMDAT deduplication.
+When `b.o:.text.foo` is discarded, the `.metadata` relocation loses its meaningful target.
+Since undefined local symbols are invalid, we cannot preserve an undefined `foo` in the output.
+
+Moreover, this rule serves as a one-definition-rule violation detector.
+The symbols `a.o:foo` and `b.o:foo` may behave differently, and `a.o:.text.foo` might not even define `foo` at all.
+The `.metadata` relocation depends on local translation unit information for `foo`, which becomes invalid when `b.o:.text.foo` is discarded.
+
+Note that if `foo` is `STB_WEAK` or `STB_GLOBAL`, it would remain defined in the output file, and the `.metadata` relocation would bind to the `foo` defined in the prevailing `.text.foo` section in `a.o`. 
+
+GCC's `-fpatchable-function-entry` was fixed to emit multiple sections. See (Chinese) [从-fpatchable-function-entry=N[,M]说起](https://maskray.me/blog/2020-02-01-fpatchable-function-entry) for detail.
+
+(The error will go away if `.metadata` changes to a non-SHF_ALLOC section as LLD doesn't scan relocations from non-SHF_ALLOC sections.)
+
+#### Group signature localization
+
+If a non-local symbol (e.g. `__llvm_retpoline_r11`) is defined relative to a section in a group, and referenced from outside the section group, it cannot be localized.
 
 The compiler may generate some functions in a COMDAT group, e.g. `__x86.get_pc_thunk.bx` and `__x86.get_pc_thunk.cx` by GCC and `__llvm_retpoline_r11` by Clang x86-64 with retpoline.
 Let's see an example of `__llvm_retpoline_r11`.
@@ -221,7 +270,7 @@ For consistency, I made `SHT_INIT_ARRAY` in a section group GCable for ld.lld 13
 
 ### WebAssembly
 
-`comdat nodeduplicate` is not implemented. I filed a feature request <https://bugs.llvm.org/show_bug.cgi?id=50531>.
+`comdat nodeduplicate` is not implemented. I filed a feature request <https://github.com/llvm/llvm-project/issues/49875>.
 
 It strikes me that WebAssembly need `WASM_COMDAT_DATA`, `WASM_COMDAT_FUNCTION`, and `WASM_COMDAT_SECTION` to encode COMDAT.
 It is difficult for an elf to understand the complexity:)

@@ -323,7 +323,7 @@ See [COMDAT and section group](/blog/2021-07-25-comdat-and-section-group).
 
 ## SHF_LINK_ORDER
 
-In a generic-abi thread, Cary Coutant initially suggested to use a new section flag `SHF_ASSOCIATED`.
+In [a generic-abi thread](https://groups.google.com/g/generic-abi/c/_CbBM6T6WeM), Cary Coutant initially suggested to use a new section flag `SHF_ASSOCIATED`.
 HP-UX and Solaris folks objected to a new generic flag.
 Cary Coutant then discussed with Jim Dehnert and noticed that the existing (rare) flag `SHF_LINK_ORDER` has semantics closer to the metadata GC semantics,
 so he intended to replace the existing flag `SHF_LINK_ORDER`.

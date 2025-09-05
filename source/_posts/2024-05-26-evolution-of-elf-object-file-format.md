@@ -4,6 +4,8 @@ author: MaskRay
 tags: [elf,linux,unix]
 ---
 
+Updated in 2025-09.
+
 The ELF object file format is adopted by many UNIX-like operating systems.
 While I've [previously delved into](/blog/2024-01-14-exploring-object-file-formats) the control structures of ELF and its predecessors, tracing the historical evolution of ELF and its relationship with the System V ABI can be interesting in itself.
 
@@ -134,8 +136,10 @@ The generic-abi Google Group **reached consensus on proposals** that haven't bee
 In April 2020, Cary Coutant reached a [preliminary agreement](https://groups.google.com/g/generic-abi/c/9OO5vhxb00Y) with Xinuos, but **the future remains uncertain**.
 While some constants (e.g., `e_machine` and `EI_OSABI` values, `ELFCOMPRESS_ZSTD`) have been defined, no functional updates to the ABI have materialized.
 
-**The absence of a centralized, up-to-date repository for the specification complicates matters**.
-While some clarifications and consensus have been reached within the generic-abi group, accessing the latest, definitive text remains a challenge.
+The absence of a centralized, up-to-date repository for the specification complicated matters.
+
+<del>
+While some clarifications and consensus have been reached within the generic-abi group, accessing the latest, definitive text remained a challenge.
 
 A potential solution could be to **decouple the ELF specification from the broader System V ABI**, as was done in the past with the TIS specification.
 This would create a dedicated and accessible reference for ELF, independent of the broader System V specificities that are of less general interest.
@@ -146,6 +150,9 @@ In practice, achieving consensus among major toolchain vendors (GNU and LLVM) ma
 While aligning with Solaris would be ideal and I will try doing so, this might not always be feasible due to varying priorities.
 
 FreeBSD, which Xinuos's OpenServer is based on, utilizes the LLVM toolchain. Xinuos might indirectly benefit from my heavy involvement into the LLVM toolchain.
+</del>
+
+In August 2025, Cary Coutant published <https://gabi.xinuos.com/> (ELF Object File Format) and <https://github.com/xinuos/gabi>.
 
 ## System V ABI Processor Supplement (psABI)
 

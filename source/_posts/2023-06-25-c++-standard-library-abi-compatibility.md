@@ -239,7 +239,7 @@ Statically linking libstdc++ is unpopular as it's difficult to ensure that there
 
 ### Symbol versioning
 
-libstdc++ does utilize symbol versioning, but I think the primary use case is so that glibc rtld will report an error (version `GLIBCXX_XXX' not found (required by YYY)` when a DSO built with new libstdc++ is loaded by an old `libstdc++.so.6`.
+While libstdc++ utilizes [symbol versioning](/blog/2020-11-26-all-about-symbol-versioning), I think the primary use case is so that glibc rtld will report an error (version `GLIBCXX_XXX' not found (required by YYY)` when a DSO built with new libstdc++ is loaded by an old `libstdc++.so.6`.
 
 Non-default symbols are limited to the implementation files and not the headers.
 If I run `llvm-nm -gjDU /usr/lib/gcc/x86_64-linux-gnu/12/libstdc++.so | grep '[^@]@[^@]'`, I can only find very few symbols.

@@ -158,7 +158,7 @@ const char *foo(int i) { return (const char *)&errmsgstr + errmsgidx[i]; }
 For C++, virtual tables can contribute many `R_*_RELATIVE` relocations through function pointers.
 Fuchsia folks contributed `-fexperimental-relative-c++-abi-vtables` to Clang which is also available on Linux.
 (underneath `i64 sub (lhs, rhs)` in a LLVM IR constant expression uses a PC-relative relocation.)
-This can make a large portion of the memory image read-only and save a lot of space (32-bit PC-relative offsets instead of 64-bit absolute addresses), but is difficult to deploy in practice because of the ABI change.
+This can make a large portion of the memory image read-only and save a lot of space (32-bit PC-relative offsets instead of 64-bit absolute addresses), but is difficult to deploy for Linux in practice because of the ABI change.
 
 Some programming languages (e.g. Jai, Odin) provide relative pointers. If the construct can be used with global objects, we can avoid many relative relocations.
 

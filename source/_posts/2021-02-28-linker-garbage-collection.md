@@ -136,7 +136,7 @@ If the only references to an as-needed shared object are from discarded sections
 
 GNU ld does not make RHS of a symbol assignment retain a section ([PR31158](https://sourceware.org/bugzilla/show_bug.cgi?id=31158)).
 
-You can print discarded sections with `--print-gc-sections`.
+You can print discarded sections with `--print-gc-sections`, or `--print-gc-sections=<file>` (LLD 22).
 
 ### ld.lld
 

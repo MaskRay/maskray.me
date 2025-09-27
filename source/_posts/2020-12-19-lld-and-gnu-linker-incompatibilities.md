@@ -44,8 +44,9 @@ Many of them just serve as educational purposes and my personal reference. There
 * GNU ld has architecture-specific rules for relocations referencing undefined weak symbols. I don't think the GNU ld behaviors can be summarized (even by maintainers!). ld.lld's are consistent.
 * The conditions to create `.interp` are different. I believe GNU ld's is quite difficult to describe.
 * `--no-allow-shlib-undefined` and `--rpath-link`
-  + GNU ld traces all shared objects (transitive `DT_NEEDED` dependencies) and emulates the bheavior of a dynamic loader to warn more cases.
+  + GNU ld traces all shared objects (transitive `DT_NEEDED` dependencies) and emulates the behavior of a dynamic loader to warn more cases.
   + gold and ld.lld implement a simplified version. They warn for shared objects whose `DT_NEEDED` dependencies are all seen as input files.
+  + ld.lld accepts and ignores `--rpath-link`
 * `--fatal-warnings`
   + GNU ld still reports `warning: ...`.
   + ld.lld switches to `error: ...`.

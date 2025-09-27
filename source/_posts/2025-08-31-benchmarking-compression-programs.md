@@ -48,17 +48,21 @@ While *zstd*'s compression speed or ratio is generally lower, its decompression 
 
 I want to benchmark the single worker performance of a few compression programs:
 
-* *lz4*: Focuses on speed over compression ratio. It seems Pareto superior to Google's *Snappy*.
+* *lz4*: Focuses on speed over compression ratio. Memory usage is extremely low. It seems Pareto superior to Google's *Snappy*.
 * *zstd*: Gained significant traction and obsoleted many existing codecs. Its LZ77 variant uses three recent match offsets like LZX. For entropy encoding, it employs Huffman coding for literals and 2-way interleaved Finite State Entropy for Huffman weights, literal lengths, match lengths, and offset codes.
   The large alphabet of literals makes Huffman a good choice, as compressing them with FSE provides little gain for a speed cost. However, other symbols have a small range, making them a sweet spot for FSE.
   zstd works on multiple streams at the same time to utilize instruction-level parallelism. zstd is supported by the `Accept-Encoding: zstd` HTTP header.
+  Decompression memory usage is very low.
 * *brotli*: Uses a combination of LZ77, 2nd order context model, Huffman coding, and static dictionary. The decompression speed is similar to gzip with a higher ratio. At lower levels, its performance is overshadowed by *zstd*.
   Compared with DEFLATE, it employs a larger sliding window (from 16KiB-16B to 16MiB-16B) and a smaller minimum match length (2 instead of 3).
   It has a predefined dictionary that works well for web content (but feels less elegant) and supports 120 transforms. *brotli* is supported by the `Accept-Encoding: br` HTTP header.
-* *bzip3*: Combines BWT, RLE, and LZP and uses arithmetic encoder.
+  Decompression memory usage is quite low.
+* *bzip3*: Combines BWT, RLE, and LZP and uses arithmetic encoder. Memory usage is large.
 * *xz*: LZMA2 with a few filters. The filters must be enabled explicitly.
-* lzham: Provides a compression ratio similar to LZMA but with faster decompression. Compression is slightly slower. The build system is not well-polished for Linux. I have forked it, fixed `stdint.h` build errors, and installed `lzhamtest`. The command line program `lzhamtest` should really be renamed to `lzham`.
-* *kanzi*: There are a wide variety of transforms and entropy encoders, unusual for a compresion program. For the compression speed of enwik8, it's Pareto superior to *xz*, but decompression is slower.
+* lzham: Provides a compression ratio similar to LZMA but with faster decompression. Compression is slightly slower while memory usage is larger.
+  The build system is not well-polished for Linux. I have forked it, fixed `stdint.h` build errors, and installed `lzhamtest`. The command line program `lzhamtest` should really be renamed to `lzham`.
+* *zpaq*: Functions as a command-line archiver supporting multiple files. It combines context mixing with arithmetic encoder but operates very slowly.
+* *kanzi*: There are a wide variety of transforms and entropy encoders, unusual for a compresion program. For the compression speed of enwik8, it's Pareto superior to *xz*, but decompression is slower. Levels 8 and 9 belong to the PAQ8 family and consume substantial memory.
 
 I'd like to test lzham (not updated for a few years), but I'm having trouble getting it to compile due to a `cstdio` header issue.
 
@@ -68,7 +72,8 @@ Still, *zstd* uses a worker thread for I/O overlap, but I don't bother with `--s
 
 To ensure fairness, each program is built with consistent compiler optimizations, such as `-O3 -march=native`.
 
-Below is a Ruby program that downloads and compiles multiple compression utilities, then benchmarks their compression and decompression performance on a specified input file, finally generates a HTML file with scatter charts.
+Below is a Ruby program that downloads and compiles multiple compression utilities, compresses then decompress a specified input file.
+It collects performance metrics including execution time, memory usage, and compression ratio, and finally generates an HTML file with scatter charts visualizing the results.
 The program has several notable features:
 
 * Adding new compressors is easy: just modify `COMPRESSORS`.

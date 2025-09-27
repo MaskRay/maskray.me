@@ -107,6 +107,8 @@ llvm-readelf: warning: 'lld.ro': section with index 1, included in the group sec
    [    1]   .text1
 ```
 
+`SHF_LINK_ORDER` sections of the same name, linking to different input sections, cannot be combined. (<https://reviews.llvm.org/D68094>)
+
 ### Scan relocations
 
 This pass is skipped. The linker does not determine whether GOT/PLT/TLSDESC/TLSGD/etc are needed.
@@ -123,6 +125,8 @@ Program headers are suppressed.
 ### Symbol table
 
 Symbols are generally concatenated. However, `STT_SECTION` symbols need to be coalesced.
+
+Unlike an executable or shared object link, `STV_HIDDEN` visibility symbols in a relocatable object are not converted to `STB_LOCAL` binding.
 
 ### Copy section contents to output and resolve relocations
 
@@ -240,6 +244,12 @@ The output can be distributed as a single `.o` file or as part of an archive fil
 
 Both the `llvm-link` approach and the relocatable linking approach need extra care dealing with COMDAT groups.
 See [COMDAT and section group#GRP_COMDAT](/blog/2021-07-25-comdat-and-section-group#grp_comdat) for why all COMDAT group signatures should be kept global to avoid pitfalls.
+
+Here are the steps:
+
+- Compile with hidden symbols by default (`-fvisibility=hidden` for definitions, or `#pragma GCC visibility("hidden")` for both definitions and references). Mark necessary symbols as exported
+- Run `ld -r --force-group-allocation`
+- Process the output with `objcopy --localize-hidden` with possibly other options.
 
 ### Find more projects using relocatable linking
 

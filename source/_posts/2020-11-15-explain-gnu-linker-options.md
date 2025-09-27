@@ -211,6 +211,9 @@ if --discard-locals
 return not (.L in a SHF_MERGE section)
 ```
 
+These `.L` symbols (temporary labels in MC) can be emitted in `clang -Wa,-L` builds. Then if `ld --discard-locals` is not specified, the linker will emit these symbols to the executable file.
+
+In addition, RISC-V linker relaxation may emit `.L0 ` (with a trailing space) symbols ([llvm-project#89693](https://github.com/llvm/llvm-project/pull/89693)).
 For RISC-V, newer GCC and Clang pass `-X` (`--discard-locals`) to the linker.
 
 ### `--no-undefined-version`
@@ -1010,7 +1013,6 @@ The text segment is traditionally the first segment. Users who specify `-Ttext-s
 The option has strange semantics (likely a bug) when `-z separate-code` is used together: <https://sourceware.org/bugzilla/show_bug.cgi?id=25207>.
 
 ld.lld provides `--image-base` to set the image base.
-GNU ld's ELF port has implemented `
 
 GNU ld's PE/COFF port has supported `--image-base` for a long time and implemented the option for ELF in the binutils 2.44 release.
 

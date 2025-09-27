@@ -4,9 +4,7 @@ author: MaskRay
 tags: [gcc,llvm]
 ---
 
-Update in 2025-06.
-
-[中文版](#中文版)
+Update in 2025-09.
 
 The main usage of stack unwinding is:
 
@@ -69,7 +67,7 @@ When the above code is compiled with `-O1` or above and `[[gnu::noinline]]` attr
 `-fno-omit-frame-pointer` does not suppress the tail call optimization.
 
 The compiler default of `-fomit-frame-pointer` has played an important role. Many targets default to `-fomit-frame-pointer` with `-O1` or above.
-Therefire, in practice, it is not guaranteed that all libraries contain frame pointers.
+Therefore, in practice, it is not guaranteed that all libraries contain frame pointers.
 When unwinding a thread, it is necessary to check whether `next_fp` is like a stack address before dereferencing it to prevent segfaults.
 
 If we can inject code to the target thread, `pthread_attr_getstack` gets the stack bounds and is an efficient way to check page accessibility.
@@ -735,17 +733,111 @@ To unwind a stack frame, `unwind_next_frame`
 * retrieves the previous IP with `orc->type` and other values.
 * retrieves the previous BP with the currrent BP, the previous SP, `orc->bp_reg` and `orc->bp_offset`. `bp->reg` can be `ORC_REG_UNDEFINED/ORC_REG_PREV_SP/ORC_REG_BP`.
 
-## Compact C Type Format SFrame
-
-In construction.
-
-As an intended format improving on `.eh_frame`, the saving appears too small.
-
 ## SFrame
 
-TODO
+`.sframe` is a lightweight alternative to `.eh_frame` that uses more compact encoding at the cost of reduced flexibility.
+It focuses on describing three key elements: the Canonical Frame Address (CFA), the return address, and the frame pointer.
+Unlike `.eh_frame`, it does not include personality routines, Language Specific Data Area (LSDA) information, or the ability to encode extra callee-saved registers.
 
-<https://blogs.oracle.com/linux/post/beyond-eh-frame-frame-pointers-the-technical-underpinnings-of-sframe>
+An `.sframe` section contains a header followed by an optional auxiliary header and arrays of Function Descriptor Entries (FDEs) and Frame Row Entries (FREs).
+
+The auxiliary header, which is currently unused, could be a replacement for the `.eh_frame` augmentation data.
+This would be useful for things like personality routines, language-specific data areas (LSDAs), and signal frames.
+
+```cpp
+struct sframe_header {
+  struct {
+    uint16_t sfp_magic;
+    uint8_t sfp_version;
+    uint8_t sfp_flags;
+  } sfh_preamble;
+  uint8_t sfh_abi_arch;
+  int8_t sfh_cfa_fixed_fp_offset;
+  // Used by x86-64 to define the return address slot relative to CFA
+  int8_t sfh_cfa_fixed_ra_offset;
+  // Size in bytes of the auxiliary header, allowing extensibility
+  uint8_t sfh_auxhdr_len;
+  // Numbers of FDEs and FREs
+  uint32_t sfh_num_fdes;
+  uint32_t sfh_num_fres;
+  // Size in bytes of FREs
+  uint32_t sfh_fre_len;
+  // Offsets in bytes of FDEs and FREs
+  uint32_t sfh_fdeoff;
+  uint32_t sfh_freoff;
+} ATTRIBUTE_PACKED;
+```
+
+Each FDE describes a function's start address and references its associated Frame Row Entries (FREs).
+
+```cpp
+struct sframe_func_desc_entry {
+  int32_t sfde_func_start_address;
+  uint32_t sfde_func_size;
+  uint32_t sfde_func_start_fre_off;
+  uint32_t sfde_func_num_fres;
+  // bits 0-3 fretype: sfre_start_address type
+  // bit 4 fdetype: SFRAME_FDE_TYPE_PCINC or SFRAME_FDE_TYPE_PCMASK
+  // bit 5 pauth_key: (AArch64 only) the signing key for the return address
+  uint8_t sfde_func_info;
+  // The size of the repetitive code block for SFRAME_FDE_TYPE_PCMASK; used by .plt
+  uint8_t sfde_func_rep_size;
+  uint16_t sfde_func_padding2;
+} ATTRIBUTE_PACKED;
+
+template <class AddrType>
+struct sframe_frame_row_entry {
+  // If the fdetype is SFRAME_FDE_TYPE_PCINC, this is an offset relative to sfde_func_start_address
+  AddrType sfre_start_address;
+  // bit 0 fre_cfa_base_reg_id: define BASE_REG as either FP or SP
+  // bits 1-4 fre_offset_count: typically 1 to 3, describing CFA, FP, and RA
+  // bits 5-6 fre_offset_size: byte size of offset entries (1, 2, or 4 bytes)
+  sframe_fre_info sfre_info;
+} ATTRIBUTE_PACKED;
+```
+
+Each FRE contains variable-length stack offsets stored as trailing data with sizes of `uint8_t`, `uint16_t`, or `uint32_t`, determined by the `fre_offset_size` field.
+The interpretation of these offsets is architecture-specific:
+
+x86-64:
+
+- First offset: Encodes CFA as `BASE_REG + offset`
+- Second offset (if present): Encodes FP as `CFA + offset`  
+- Implicit return address: Computed as `CFA + sfh_cfa_fixed_ra_offset` (using header field)
+
+AArch64:
+
+- First offset: Encodes CFA as `BASE_REG + offset`
+- Second offset: Encodes return address as `CFA + offset`
+- Third offset (if present): Encodes FP as `CFA + offset`
+
+SFrame reduces size compared to `.eh_frame` plus `.eh_frame_hdr` by:
+
+- Eliminating `.eh_frame_hdr` through sorted `sfde_func_start_address` fields
+- Replacing CIE pointers with direct FDE-to-FRE references
+- Using variable-width `sfre_start_address` fields (1 or 2 bytes) for small functions
+- Storing start addresses instead of address ranges. `.eh_frame` address ranges
+- Start addresses in a small function use 1 or 2 byte fields, more efficient than `.eh_frame` initial\_location, which needs at least 4 bytes (`DW_EH_PE_sdata4`).
+- Hard-coding stack offsets rather than using flexible register specifications
+
+However, the bytecode design of `.eh_frame` can sometimes be more efficient than `.sframe`, as demonstrated on x86-64.
+
+The format includes endianness variations that complicate toolchain support.
+I think we should use a little-endian format universally, regardless of the target system's native endianness, removing `template <class Endian>` from C++ code.
+On the big-endian z/Architecture, this is efficient: the LOAD REVERSED instructions are used by the bswap versions in the following program, not even requiring extra instructions.
+
+```c
+#define WIDTH(x) \
+typedef __UINT##x##_TYPE__ [[gnu::aligned(1)]] uint##x; \
+uint##x load_inc##x(uint##x *p) { return *p+1; } \
+uint##x load_bswap_inc##x(uint##x *p) { return __builtin_bswap##x(*p)+1; }; \
+uint##x load_eq##x(uint##x *p) { return *p==3; } \
+uint##x load_bswap_eq##x(uint##x *p) { return __builtin_bswap##x(*p)==3; }; \
+
+WIDTH(16);
+WIDTH(32);
+WIDTH(64);
+```
 
 ### LLVM
 
@@ -774,554 +866,3 @@ We have at least 3 routes:
 
 Unwind information is difficult to have 100% coverage.
 Linker generated code (PLT and range extension thunks) generally does not have unwind informatioin coverage.
-
-
-# 中文版
-
-Stack unwinding主要有以下作用：
-
-* 獲取stack trace，用於debugger、crash reporter、profiler、garbage collector等
-* 加上personality routine和language specific data area後實現C++ exceptions(Itanium C++ ABI)。参见[C++ exception handling ABI](/blog/2020-12-12-c++-exception-handling-abi)
-
-Stack unwinding可以分成兩類：
-
-* synchronous: 程序自身觸發的，C++ throw、獲取自身stack trace等。這類stack unwinding只發生在函數調用處(在function body內，不會出現在prologue/epilogue)
-* asynchronous: 由signal或外部程序觸發，這類stack unwinding可以發生在函數prologue/epilogue
-
-## Frame pointer
-
-最經典、最簡單的stack unwinding基於frame pointer：固定一個寄存器爲frame pointer(在x86-64上爲RBP)，函數prologue處把frame pointer放入棧幀，並更新frame pointer爲保存的frame pointer的地址。
-frame pointer值和棧上保存的值形成了一個單鏈表。獲取初始frame pointer值(`__builtin_frame_address`)後，不停解引用frame pointer即可得到所有棧幀的frame pointer值。
-這種方法不適用於prologue/epilogue的部分指令。
-
-```asm
-pushq %rbp
-movq %rsp, %rbp # after this, RBP references the current frame
-...
-popq %rbp
-retq  # RBP references the previous frame
-```
-
-下面是個簡單的stack unwinding例子：
-```c
-#include <stdio.h>
-[[gnu::noinline]] void qux() {
-  void **fp = __builtin_frame_address(0);
-  for (;;) {
-    printf("%p\n", fp);
-    void **next_fp = *fp;
-    if (next_fp <= fp) break;
-    fp = next_fp;
-  }
-}
-[[gnu::noinline]] void bar() { qux(); }
-[[gnu::noinline]] void foo() { bar(); }
-int main() { foo(); }
-```
-
-基於frame pointer的方法簡單，但是有若干缺陷。
-
-上面的代碼用`-O1`或以上編譯時foo和bar會tail call，程序輸出不會包含foo bar的棧幀(`-fomit-leaf-frame-pointer`並不阻礙tail call)。
-
-實踐中，有時候不能保證所有庫都包含frame pointer。unwind一個線程時，爲了增強健壯性需要檢測一個`next_fp`是否像棧地址。檢測的一種方法是解析`/proc/*/maps`判斷地址是否可讀(慢)，另一種是
-```c
-#include <fcntl.h>
-#include <unistd.h>
-
-// Or use the write end of a pipe.
-int fd = open("/dev/random", O_WRONLY);
-if (write(fd, address, 1) < 0)
-  // not readable
-```
-
-Linux上`rt_sigprocmask`更好：
-```
-#include <errno.h>
-#include <fcntl.h>
-#include <syscall.h>
-#include <unistd.h>
-
-errno = 0;
-syscall(SYS_rt_sigprocmask, ~0, address, (void *)0, /*sizeof(kernel_sigset_t)=*/8);
-if (errno == EFAULT)
-  // not readable
-```
-
-另外，預留一個寄存器用於frame pointer會增大text size、有性能開銷(prologue、epilogue額外的指令開銷和少一個寄存器帶來的寄存器壓力)，在寄存器貧乏的x86-32可能相當顯著，在寄存器較爲充足的x86-64可能也有1%以上的性能損失。
-
-### 編譯器行爲
-
-* -O0: 預設`-fno-omit-frame-pointer`，所有函數都有frame pointer
-* -O1或以上: 預設`-fomit-frame-pointer`，只有必要情況才設置frame pointer。指定`-fno-omit-leaf-frame-pointer`則可得到類似-O0效果。可以額外指定`-momit-leaf-frame-pointer`去除leaf functions的frame pointer
-
-## libunwind
-
-C++ exception、profiler/crash reporter的stack unwinding通常用libunwind API和DWARF Call Frame Information。上個世紀90年代Hewlett-Packard定義了一套libunwind API，分爲兩類：
-
-* `unw_*`: 入口是`unw_init_local`(local unwinding，當前進程)和`unw_init_remote`(remote unwinding，其他進程)。通常使用libunwind的應用使用這套API。比如Linux perf會調用`unw_init_remote`
-* `_Unwind_*`: 這部分標準化爲[Itanium C++ ABI: Exception Handling](https://itanium-cxx-abi.github.io/cxx-abi/abi-eh.html)的Level 1: Base ABI。Level 2 C++ ABI調用這些`_Unwind_*` API。其中的`_Unwind_Resume`是唯一被C++編譯後的代碼直接調用的API，其中的`_Unwind_Backtrace`被少數應用用於獲取backtrace，其他函數則會被libsupc++/libc++abi調用。
-
-Hewlett-Packard開源了<https://www.nongnu.org/libunwind/>(除此之外還有很多叫做"libunwind"的項目)。這套API在Linux上的常見實現是：
-
-* libgcc/unwind-* (`libgcc_s.so.1`或`libgcc_eh.a`): 實現了`_Unwind_*`並引入了一些擴展：`_Unwind_Resume_or_Rethrow, _Unwind_FindEnclosingFunction, __register_frame`等
-* llvm-project/libunwind (`libunwind.so`或`libunwind.a`)是HP API的一個簡化實現，提供了部分`unw_*`，但沒有實現`unw_init_remote`。部分代碼取自ld64。使用Clang的話可以用`--rtlib=compiler-rt --unwindlib=libunwind`選擇
-* glibc的`_Unwind_Find_FDE`內部實現，通常不導出，和`__register_frame_info`有關
-
-## DWARF Call Frame Information
-
-程序不同區域需要的unwind指令由DWARF Call Frame Information (CFI)描述，在ELF平臺上由`.eh_frame`存儲。Compiler/assembler/linker/libunwind提供相應支持。
-
-`.eh_frame`由Common Information Entry (CIE)和Frame Description Entry (FDE)組成。CIE有這些字段：
-
-* length
-* CIE\_id: 常數0。該字段用於區分CIE和FDE，在FDE中該字段非0，爲CIE\_pointer
-* version: 常數1
-* augmentation: 描述CIE/FDE參數列表的字串。`P`字符表示personality routine指針；`L`字符表示FDE的augmentation data存儲了language-specific data area (LSDA)
-* address\_size: 一般爲4或8
-* segment\_selector\_size: for x86
-* code\_alignment\_factor: 假設指令長度都是2或4的倍數(用於RISC)，影響`DW_CFA_advance_loc`等的參數的乘數
-* data\_alignment\_factor: 影響`DW_CFA_offset DW_CFA_val_offset`等的參數的乘數
-* return\_address\_register
-* augmentation\_data\_length
-* augmentation\_data: personality
-* initial\_instructions
-* padding
-
-每個FDE有一個關聯的CIE。FDE有這些字段：
-
-* length: FDE自身長度。若爲0xffffffff，接下來8字節(extended\_length)記錄實際長度。除非特別構造，extended\_length是用不到的
-* CIE\_pointer: 從當前位置減去CIE\_pointer得到關聯的CIE
-* initial\_location: 該FDE描述的第一個位置的地址。在.o中此處有一個引用section symbol的relocation
-* address\_range: initial\_location和address\_range描述了一個地址區間
-* instructions: unwind時的指令
-* augmentation\_data\_length
-* augmentation\_data: 如果關聯的CIE augmentation包含`L`字符，這裏會記錄language-specific data area
-* padding
-
-CIE引用text section中的personality。FDE引用`.gcc_except_table`中的LSDA。personality和lsda用於Itanium C++ ABI的Level 2: C++ ABI。
-
-`.eh_frame`基於DWARF v2引入的`.debug_frame`。它們有一些區別：
-
-* `.eh_frame`帶有`SHF_ALLOC` flag(標誌一個section是否應爲內存中鏡像的一部分)而`.debug_frame`沒有，因此後者的使用場景非常少。
-* `debug_frame`支持DWARF64格式(支持64-bit offsets但體積會稍大)而`.eh_frame`不支持(其實可以拓展，但是缺乏需求)
-* `.debug_frame`的CIE中沒有augmentation\_data\_length和augmentation\_data
-* CIE中version的值不同
-* FDE中CIE\_pointer的含義不同。`.debug_frame`中表示一個section offset(absolute)而`.eh_frame`中表示一個relative offset。`.eh_frame`作出的這一改變很好。如果`.eh_frame`長度超過32-bit，`.debug_frame`得轉換成DWARF64才能表示CIE\_pointer，而relative offset則無需擔心這一問題(如果FDE到CIE的距離超過32-bit了，追加一個CIE即可)
-
-對於如下的函數：
-```c
-void f() {
-  __builtin_unwind_init();
-}
-```
-
-編譯器用`.cfi_*`(CFI directive)標註彙編，`.cfi_startproc`和`.cfi_endproc`標識FDE區域，其他CFI directives描述CFI instructions。
-一個call frame用棧上的一個地址表示。這個地址叫做Canonical Frame Address (CFA)，通常是call site的stack pointer值。下面用一個例子描述CFI instructions的作用：
-```asm
-f:
-# At the function entry, CFA = rsp+8
-	.cfi_startproc
-# %bb.0:
-	pushq	%rbp
-# Redefine CFA = rsp+16
-	.cfi_def_cfa_offset 16
-# rbp is saved at the address CFA-16
-	.cfi_offset %rbp, -16
-	movq	%rsp, %rbp
-# CFA = rbp+16. CFA does not needed to be redefined when rsp changes
-	.cfi_def_cfa_register %rbp
-	pushq	%r15
-	pushq	%r14
-	pushq	%r13
-	pushq	%r12
-	pushq	%rbx
-# rbx is saved at the address CFA-56
-	.cfi_offset %rbx, -56
-	.cfi_offset %r12, -48
-	.cfi_offset %r13, -40
-	.cfi_offset %r14, -32
-	.cfi_offset %r15, -24
-	popq	%rbx
-	popq	%r12
-	popq	%r13
-	popq	%r14
-	popq	%r15
-	popq	%rbp
-# CFA = rsp+8
-	.cfi_def_cfa %rsp, 8
-	retq
-.Lfunc_end0:
-	.size	f, .Lfunc_end0-f
-	.cfi_endproc
-```
-
-彙編器解析CFI directives生成`.eh_frame`(這套機制由Alan Modra在2003年引入)。Linker收集.o中的`.eh_frame` input sections生成output `.eh_frame`。
-2006年GNU as引入了`.cfi_personality`和`.cfi_lsda`。
-
-### `.eh_frame_hdr`和`PT_GNU_EH_FRAME`
-
-定位一個pc所在的FDE需要從頭掃描`.eh_frame`，找到合適的FDE(pc是否落在initial\_location和address\_range表示的區間)，所花時間和掃描的CIE和FDE記錄數相關。
-<https://sourceware.org/pipermail/binutils/2001-December/015674.html>引入了`.eh_frame_hdr`，包含binary search index table描述(initial\_location, FDE address) pairs。
-
-`ld --eh-frame-hdr`可以生成`.eh_frame_hdr`。Linker會另外創建program header `PT_GNU_EH_FRAME`來包含`.eh_frame_hdr`。
-Unwinder會尋找`PT_GNU_EH_FRAME`來定位`.eh_frame_hdr`，見下文的例子。
-
-### `__register_frame_info`
-
-在`.eh_frame_hdr`和`PT_GNU_EH_FRAME`發明之前，crtbegin (`crtstuff.c`)中有一個static constructor `frame_dummy`：調用`__register_frame_info`註冊可執行文件的`.eh_frame`。
-
-現在`__register_frame_info`只有`-static`鏈接的程序纔會用到。相應地，如果鏈接時指定`-Wl,--no-eh-frame-hdr`，就無法unwind(如果使用C++ exception則會導致`std::terminate`)。
-
-### libunwind例子
-
-```c
-#include <libunwind.h>
-#include <stdio.h>
-
-void backtrace() {
-  unw_context_t context;
-  unw_cursor_t cursor;
-  // Store register values into context.
-  unw_getcontext(&context);
-  // Locate the PT_GNU_EH_FRAME which contains PC.
-  unw_init_local(&cursor, &context);
-  size_t rip, rsp;
-  do {
-    unw_get_reg(&cursor, UNW_X86_64_RIP, &rip);
-    unw_get_reg(&cursor, UNW_X86_64_RSP, &rsp);
-    printf("rip: %zx rsp: %zx\n", rip, rsp);
-  } while (unw_step(&cursor) > 0);
-}
-
-void bar() {backtrace();}
-void foo() {bar();}
-int main() {foo();}
-```
-
-如果使用llvm-project/libunwind：
-```sh
-$CC a.c -Ipath/to/include -Lpath/to/lib -lunwind
-```
-
-如果使用nongnu.org/libunwind，兩種選擇：(a) `#include <libunwind.h>`前添加`#define UNW_LOCAL_ONLY` (b) 多鏈接一個庫，x86-64上是`-l:libunwind-x86_64.so`。
-使用Clang的話也可用`clang --rtlib=compiler-rt --unwindlib=libunwind -I path/to/include a.c`，除了提供`unw_*`外，能確保不鏈接`libgcc_s.so`
-
-* `unw_getcontext`: 獲取寄存器值(包含PC)
-* `unw_init_local`
-  + 使用`dl_iterate_phdr`遍歷可執行文件和shared objects，找到包含PC的`PT_LOAD` program header
-  + 找到所在module的`PT_GNU_EH_FRAME`(`.eh_frame_hdr`)，存入`cursor`
-* `unw_step`
-  + 二分搜索PC對應的`.eh_frame_hdr`項，記錄找到的FDE和其指向的CIE
-  + 執行CIE中的initial\_instructions
-  + 執行FDE中的instructions。維護一個location、CFA，初始指向FDE的initial\_location，指令中`DW_CFA_advance_loc`增加location；`DW_CFA_def_cfa_*`更新CFA；`DW_CFA_offset`表示一個寄存器的值保存在CFA+offset處
-  + location大於等於PC時停止。也就是說，執行的指令是FDE instructions的一個前綴
-
-Unwinder根據program counter找到適用的FDE，執行所有在program counter之前的CFI instructions。
-
-有幾種重要的
-
-* `DW_CFA_def_cfa_*`
-* `DW_CFA_offset`
-* `DW_CFA_advance_loc`
-
-一個`-DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86`的clang，`.text` 51.7MiB、`.eh_frame` 4.2MiB、`.eh_frame_hdr` 646、2個CIE、82745個FDE。
-
-### 註記
-
-CFI instructions適合編譯器生成代碼，而手寫彙編要準確標準每一條指令是繁瑣的，也很容易出錯。
-2015年Alex Dowad也musl libc貢獻了awk腳本，解析assembly並自動標註CFI directives。
-其實對於編譯器生成的代碼也不容易，對於一個不用frame pointer的函數，調整SP就得同時輸出一條CFI directive重定義CFA。GCC是不解析inline assembly的，因此inline assembly裏調整SP往往會造成不準確的CFI。
-
-```c
-void foo() {
-  asm("subq $128, %rsp\n"
-  // Cannot unwind if -fomit-leaf-frame-pointer
-      "nop\n"
-      "addq $128, %rsp\n");
-}
-
-int main() {
-  foo();
-}
-```
-
-而LLVM裏的CFIInstrInserter可以插入`.cfi_def_cfa_* .cfi_offset .cfi_restore`調整CFA和callee-saved寄存器。
-
-The DWARF scheme also has very low information density. The various compact unwind schemes have made improvement on this aspect. To list a few issues:
-
-* CIE address\_size: nobody uses different values for an architecture. Even if they do (ILP32 ABIs in AArch64 and x86-64), the information is already available elsewhere.
-* CIE segment\_selector\_size: It is nice that they cared x86, but x86 itself does not need it anymore:/
-* CIE code\_alignment\_factor and data\_alignment\_factor: A RISC architecture with such preference can hard code the values.
-* CIE return\_address\_register: I do not know when an architecture wants to use a different register for the return address.
-* length: The DWARF's 8-byte form is definitely overengineered... For standard form prologue/epilogue, the field should not be needed.
-* initial\_location and address\_range: if a binary search index table is always needed, why do we need the length field?
-* instructions: bytecode is flexible but commonly a function prologue/epilogue is of a standard form and the few callee-saved registers can be encoded in a more compact way.
-* augmentation\_data: While this provide flexibility, in practice very rarely a function needs anything more than a personality and a LSDA pointer.
-
-#### `SHT_X86_64_UNWIND`
-
-`.eh_frame`在linker/dynamic loader裏有特殊處理，照理應該用一個單獨的section type，但當初設計時卻用了`SHT_PROGBITS`。
-在x86-64 psABI中`.eh_frame`的型別爲`SHT_X86_64_UNWIND`(可能是受到Solaris影響)。
-
-* GNU as中，`.section .eh_frame,"a",@unwind`會生成`SHT_X86_64_UNWIND`，而`.cfi_*`則生成`SHT_PROGBITS`。
-* Clang 3.8起，`.cfi_*`生成`SHT_X86_64_UNWIND`
-
-`.section .eh_frame,"a",@unwind`很少見(glibc's x86 port,libffi,LuaJIT等少數包)，因此檢查`.eh_frame`的型別是個辨別Clang/GCC object file的好方法:)
-我有一個LLD 11.0.0 commit就是在relocatable link時接受兩種型別的`.eh_frame`;-)
-
-給未來架構的建議：在定義processor-specific section types時，請不要把0x70000001 (`SHT_ARM_EXIDX=SHT_IA_64_UNWIND=SHT_PARISC_UNWIND=SHT_X86_64_UNWIND=SHT_LOPROC+1`)用於unwinding以外的用途:)
-`SHT_CSKY_ATTRIBUTES=0x70000001`:)
-
-#### Linker角度的問題
-
-通常在COMDAT group和啓用`-ffunction-sections`的情況下，.data/.rodata需要像.text那樣分裂開，但是`.eh_frame`是一個monolithic section。
-和很多其他metadata sections一樣，monolithic的主要問題是linker garbage collection有點麻煩。
-很其他metadata sections不同的是，簡單的丟棄garbage collecting不是一種選擇：`.eh_frame_hdr`是一個binary search index table，重複/無用的entries會使consumers困惑。
-
-Linker在處理`.eh_frame`時，需要在概念上分裂`.eh_frame`成CIE/FDE。
-`--gc-sections`時，概念上的引用關係和實際的relocation是相反的：FDE有一個引用text section的relocation；GC時，若被指向的text section被丟棄，引用它的FDE也應被丟棄。
-
-LLD對`.eh_frame`有些特殊處理：
-
-* `-M`需要特殊代碼
-* `--gc-sections`發生在`.eh_frame` deduplication/GC前。CIE中的personality是有效的reference，FDE中的initial\_location應該忽略，FDE中的lsda引用只考慮non-section-group情形
-* 在relocatable link中，允許從`.eh_frame`指向一個discarded section(due to COMDAT group rule)的`STT_SECTION` symbol(通常對於discarded section，來自section group外的`STB_LOCAL` relocation應該被拒絕)
-
-## Compact unwind descriptors
-
-在macOS上，Apple設計了compact unwind descriptors機制加速unwinding，理論上這種技術可以用於節省一些`__eh_frame`空間，但並沒有實現。
-主要思想是：
-
-* 大多數函數的FDE都有固定的模式(prologue處指定CFA、存儲callee-saved registers)，可以把FDE instructions壓縮爲32-bit。
-* CIE/FDE augmentation data描述的personality/lsda很常見，可以提取出來成爲固定字段。
-
-下面只討論64-bit。一個descriptor佔32字節
-
-```asm
-.quad _foo
-.set L1, Lfoo_end-_foo
-.long L1
-.long compact_unwind_description
-.quad personality
-.quad lsda_address
-```
-
-如果研究`.eh_frame_hdr`(binary search index table)和`.ARM.exidx`的話，可以知道length字段是冗餘的。
-
-Compact unwind descriptor編碼爲：
-```c
-uint32_t : 24; // vary with different modes
-uint32_t mode : 4;
-uint32_t flags : 4;
-```
-
-定義了5種mode：
-
-* 0: reserved
-* 1: FP-based frame: RBP爲frame pointer，frame size可變
-* 2: SP-based frame: 不用frame pointer，frame size編譯期固定
-* 3: large SP-based frame: 不用frame pointer，frame size編譯期固定但數值較大，無法用mode 2表示
-* 4: DWARF CFI escape
-
-### FP-based frame (`UNWIND_MODE_BP_FRAME`)
-
-Compact unwind descriptor編碼爲：
-```c
-uint32_t regs : 15;
-uint32_t : 1; // 0
-uint32_t stack_adjust : 8;
-uint32_t mode : 4;
-uint32_t flags : 4;
-```
-
-x86-64上callee-saved寄存器有：RBX,R12,R13,R14,R15,RBP。3 bits可以編碼一個寄存器，15 bits足夠表示除RBP外的5個寄存器(是否保存及保存在哪裏)。
-stack\_adjust記錄保存寄存器外的額外棧空間。
-
-### SP-based frame (`UNWIND_MODE_STACK_IMMD`)
-
-Compact unwind descriptor編碼爲：
-```c
-uint32_t reg_permutation : 10;
-uint32_t cnt : 3;
-uint32_t : 3;
-uint32_t size : 8;
-uint32_t mode : 4;
-uint32_t flags : 4;
-```
-
-cnt表示保存的寄存器數(最大6)。
-reg\_permutation表示保存的寄存器的排列的序號。
-size\*8表示棧幀大小。
-
-### Large SP-based frame (`UNWIND_MODE_STACK_IND`)
-
-Compact unwind descriptor編碼爲：
-```c
-uint32_t reg_permutation : 10;
-uint32_t cnt : 3;
-uint32_t adj : 3;
-uint32_t size_offset : 8;
-uint32_t mode : 4;
-uint32_t flags : 4;
-```
-
-和SP-based frame類似。特別的是：棧幀大小是從text section讀取的。RSP調整量通常由`subq imm, %rsp`表示，用size\_offset表示該指令到函數開頭的距離。
-實際表示的stack size還要算上adj\*8。
-
-### DWARF CFI escape
-
-如果因爲各種原因，compact unwind descriptor無法表示，就要回退到DWARF CFI。
-
-
-LLVM實現裏，每一個函數只用一個compact unwind descriptor表示。如果asynchronous stack unwinding發生在epilogue，已有實現無法把它和發生在function body的stack unwinding區分開來。
-Canonical Frame Address會計算錯誤，caller-saved寄存器也會錯誤地讀取。
-如果發生在prologue，且prologue在push寄存器和`subq imm, $rsp`外有其他指令，也會出錯。
-另外如果一個函數啓用了shrink wrapping，prologue可能不在函數開頭處。開頭到prologue間的asynchronous stack unwinding也會出錯。
-這個問題似乎多數人都不關心，可能是因爲profiler丟失幾個百分點的profile大家不在乎吧。
-
-其實如果用多個descriptors描述一個函數的各個區域，還是可以準確unwind的。
-OpenVMS 2018年提出了[[RFC] Improving compact x86-64 compact unwind descriptors](http://lists.llvm.org/pipermail/llvm-dev/2018-January/120741.html)，可惜沒有相關實現。
-
-## ARM exception handling
-
-分爲`.ARM.exidx`和`.ARM.extab`
-
-`.ARM.exidx`是個binary search index table，由2-word pairs組成。
-第一個word是31-bit PC-relative offset to the start of the region。
-第二個word用程序描述更加清晰：
-```c
-if (indexData == EXIDX_CANTUNWIND)
-  return false;  // like an absent .eh_frame entry. In the case of C++ exceptions, std::terminate
-if (indexData & 0x80000000) {
-  extabAddr = &indexData;
-  extabData = indexData; // inline
-} else {
-  extabAddr = &indexData + signExtendPrel31(indexData);
-  extabData = read32(&indexData + signExtendPrel31(indexData)); // stored in .ARM.extab
-}
-```
-
-`tableData & 0x80000000`表示一個compact model entry，否則表示一個generic model entry。
-
-`.ARM.exidx`相當於增強的`.eh_frame_hdr`，compact model相當於內聯了`.eh_frame`中的personality和lsda。考慮下面三種情況：
-
-* 如果不會觸發C++ exception且不會調用可能觸發exception的函數：不需要personality，只需要一個`EXIDX_CANTUNWIND` entry，不需要`.ARM.extab`
-* 如果會觸發C++ exception但是不需要landing pad：personality是`__aeabi_unwind_cpp_pr0`，只需要一個compact model的entry，不需要`.ARM.extab`
-* 如果有catch：需要`__gxx_personality_v0`，需要`.ARM.extab`
-
-`.ARM.extab`相當於合併的`.eh_frame`和`.gcc_except_table`。
-
-### Generic model
-
-```c
-uint32_t personality; // bit 31 is 0
-uint32_t : 24;
-uint32_t num : 8;
-uint32_t opcodes[];   // opcodes, variable length
-uint8_t lsda[];       // variable length
-```
-
-待補充
-
-## Windows ARM64 exception handling
-
-參見<https://docs.microsoft.com/en-us/cpp/build/arm64-exception-handling>，這是我最欣賞的編碼方案。
-支持mid-prolog和mid-epilog的unwinding。支持function fragments(用來表示shrink wrapping等非常規棧幀)。
-
-保存在`.pdata`和`.xdata`兩個sections。
-
-```c
-uint32_t function_start_rva;
-uint32_t Flag : 2;
-uint32_t Data : 30;
-```
-
-對於canonical form的函數，使用Packed Unwind Data，不需要`.xdata`記錄；對於Packed Unwind Data無法表示的descriptor，保存在`.xdata`。
-
-### Packed Unwind Data
-
-```c
-uint32_t FunctionStartRVA;
-uint32_t Flag : 2;
-uint32_t FunctionLength : 11;
-uint32_t RegF : 3;
-uint32_t RegI : 4;
-uint32_t H : 1;
-uint32_t CR : 2;
-uint32_t FrameSize : 9;
-```
-
-## MIPS compact exception tables
-
-待補充
-
-## Linux kernel ORC unwind tables
-
-對於x86-64，Linux kernel使用自己的unwind tables：ORC。文檔在<https://www.kernel.org/doc/html/latest/x86/orc-unwinder.html>。lwn.net上有一篇介紹[The ORCs are coming](https://lwn.net/Articles/728339/)。
-
-`objtool orc generate a.o`解析`.eh_frame`並生成`.orc_unwind`和`.orc_unwind_ip`。對於這樣一個.o文件：
-```asm
-.globl foo
-.type foo, @function
-foo:
-  ret
-```
-
-Unwind information在兩個地址發生改變：foo的開頭和末尾，因此需要兩個2 ORC entries。
-如果DWARF CFA在函數中間變更(比如因爲push/pop)，可能會需要更多entries。
-
-`.orc_unwind_ip`有兩個entries，表示PC-relative地址。
-```
-Relocation section '.rela.orc_unwind_ip' at offset 0x2028 contains 2 entries:
-    Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
-0000000000000000  0000000500000002 R_X86_64_PC32          0000000000000000 .text + 0
-0000000000000004  0000000500000002 R_X86_64_PC32          0000000000000000 .text + 1
-```
-
-`.orc_unwind`包含類隔類型爲`orc_entry`的entries，記錄上一個棧幀的IP/SP/BP的存儲位置。
-```c
-struct orc_entry {
-  s16 sp_offset; // sp_offset and sp_reg encode where SP of the previous frame is stored
-  s16 bp_offset; // bp_offset and bp_reg encode where BP of the previous frame is stored
-  unsigned sp_reg:4;
-  unsigned bp_reg:4;
-  unsigned type:2; // how IP of the previous frame is stored
-  unsigned end:1;
-} __attribute__((__packed__));
-```
-
-你可能會發現這個方案和Apples's compact unwind descriptors的`UNWIND_MODE_BP_FRAME` and `UNWIND_MODE_STACK_IMMD`有相似之處。
-ORC方案使用16-bit整數，所以`UNWIND_MODE_STACK_IND`應該是用不到的。
-Unwinding時，除了BP以外的多數callee-saved寄存器用不到，所以ORC也沒存儲它們。
-
-Linker會resolve `.orc_unwind_ip`的relocations，並創建`__start_orc_unwind_ip/__stop_orc_unwind_ip/__start_orc_unwind/__stop_orc_unwind`用於定界。
-然後，一個host utility `scripts/sorttable`對`.orc_unwind_ip`和`.orc_unwind`進行排序。
-運行時`unwind_next_frame`執行下面的步驟unwind一個棧幀：
-
-* 在`.orc_unwind_ip`裏二分搜索需要的ORC entry
-* 根據當前SP、`orc->sp_reg`、`orc->sp_offset`獲取上一個棧幀的SP
-* 根據`orc->type`和其他信息獲取上一個棧幀的IP
-* 根據當前BP、上一個棧幀的SP、`orc->bp_reg`、`orc->bp_offset`獲取上一個棧幀的BP
-
-### LLVM
-
-In LLVM, `Function::needsUnwindTableEntry` decides whether CFI instructions should be emitted: `hasUWTable() || !doesNotThrow() || hasPersonalityFn()`
-
-On ELF targets, if a function has `uwtable` or `personality`, or does not have `nounwind` (`needsUnwindTableEntry`), it marks that `.eh_frame` is needed in the module.
-Then, a function gets `.eh_frame` if `needsUnwindTableEntry` or `-g[123]` is specified.
-
-To ensure no `.eh_frame`, every function needs `nounwind`.
-
-`uwtable` is coarse-grained: it does not specify the amount of unwind information.
-[[RFC] Asynchronous unwind tables attribute](https://lists.llvm.org/pipermail/llvm-dev/2021-November/153768.html) proposes to make it a gradient.
-
-`lib/CodeGen/AsmPrinter/AsmPrinter.cpp:352`
-
-### 尾声
-
-用於profiling的stack unwinding策略會怎樣發展是個開放問題。
-我們有至少三種路線：
-
-* compact unwind
-* 硬件支持。
-* 主要基於FP

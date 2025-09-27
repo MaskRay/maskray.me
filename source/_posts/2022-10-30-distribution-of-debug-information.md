@@ -256,6 +256,13 @@ bazel -c dbg --fission=yes :a  # bazel-bin/_objs/a/a.pic.dwo
 bazel -c dbg --fission=yes :a.dwp  # bazel-bin/a.dwp
 ```
 
+DWARF v5 introduced the `.debug_names` section as an accelerated lookup table for debugging symbols.
+You can generate this section using `clang -g -gpubnames`, which creates a per-compilation-unit index.
+When linking, the linker typically concatenates individual `.debug_names` sections from each input object file.
+LLDB is able to read `.debug_names` sections parallelly.
+ld.lld has implemented the `--debug-names` flag to create a unified, merged `.debug_names` index that spans the entire module, providing better performance than the fragmented per-CU approach.
+([#86508](https://github.com/llvm/llvm-project/pull/86508))
+
 ### Bazel
 
 Bazel sets `PWD=/proc/self/cwd` for local determinism.

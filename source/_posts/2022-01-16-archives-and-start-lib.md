@@ -7,7 +7,7 @@ tags: [binutils,linker,llvm]
 ## .a archives
 
 Unix-like systems represent static libraries as `.a` archives.
-A `.a` archive consists of a header and a collection of files with metadata.
+A `.a` archive consists of a header and a collection of files with file member header.
 Its usage is tightly coupled with the linker.
 An archive almost always contains only relocatable object files and the linker has built-in support for reading it.
 
@@ -57,13 +57,17 @@ b.o:
 0000000000000000 T bar
 ```
 
-Quote FreeBSD `ar(5)`:
+### 64-bit archives
 
-> In the SVR4/GNU archive format, the archive symbol table starts with a 4-byte binary value containing the number of entries contained in the archive symbol table.  This count of entries is stored most significant byte first.
-> Next, there are count 4-byte numbers, each stored most significant byte first.  Each number is a binary offset to the archive header for the member in the archive file for the corresponding symbol table entry.
-> After the binary offset values, there are count NUL-terminated strings in sequence, holding the symbol names for the corresponding symbol table entries.
+Most archive implementations impose size limitations due to format constraints.
+
+- The 32-bit symbol table uses 4-byte fields for both symbol name offsets and archive member offsets, which can limit addressability within large archives.
+  This limitation can be lifted by using a 64-bit symbol table.
+- The archive member header stores file sizes as 10-character decimal strings - which caps individual member sizes at 9999999999 bytes (approximately 9.3 GiB).
+  This limitation can be lifted by using a longer decimal string.
 
 You may read [64-bit Archives Needed](http://www.linker-aliens.org/blogs/ali/entry/64_bit_archives_needed/) for more information.
+AIX has a big archive format that addresses both limitations.
 
 ## Thin archives
 

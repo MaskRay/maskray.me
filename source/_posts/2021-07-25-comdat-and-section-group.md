@@ -4,6 +4,10 @@ author: MaskRay
 tags: [binutils,llvm,linker]
 ---
 
+Updated in 2025-09.
+
+The blog post explores how COMDAT (in the PE format) and section groups (in the ELF format) provide a mechanism to group related sections for efficient deduplication and garbage collection.
+
 ## Vague linkage
 
 In C++, inline functions, template instantiations, and a few other things can be defined in multiple object files but need deduplication at link time.
@@ -143,7 +147,7 @@ The `.metadata` relocation depends on local translation unit information for `fo
 
 Note that if `foo` is `STB_WEAK` or `STB_GLOBAL`, it would remain defined in the output file, and the `.metadata` relocation would bind to the `foo` defined in the prevailing `.text.foo` section in `a.o`. 
 
-GCC's `-fpatchable-function-entry` was fixed to emit multiple sections. See (Chinese) [从-fpatchable-function-entry=N[,M]说起](https://maskray.me/blog/2020-02-01-fpatchable-function-entry) for detail.
+GCC's `-fpatchable-function-entry` was fixed to emit multiple sections. See [-fpatchable-function-entry=N[,M]](https://maskray.me/blog/2020-02-01-fpatchable-function-entry) for detail.
 
 (The error will go away if `.metadata` changes to a non-SHF_ALLOC section as LLD doesn't scan relocations from non-SHF_ALLOC sections.)
 

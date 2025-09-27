@@ -201,3 +201,37 @@ The most common incarnation is that `def1.a` and `def2.a` have the same path, e.
 This case is benign. I submitted <https://reviews.llvm.org/D77522> to suppress the `--warn-backrefs` diagnostic.
 If `def1.a` and `def2.a` have different paths, this is like an one-definition-rule violation.
 I think if we ever report a warning, we may need a new option.
+
+---
+
+The following example demonstrates another scenario where GNU ld and LLD exhibit different behavior.
+The linker first extracts `b.a(b0.o)` to resolve the undefined `foo`.
+
+- GNU ld proceeds to extract `b.a(b1.o)` to resolve the `dup` symbol
+- LLD instead extracts `a.a(a.o)`. Notably, the `--warn-backrefs` flag fails to detect this behavioral difference as a potential issue.
+
+```
+# RUN: rm -rf %t && split-file %s %t && cd %t
+# RUN: as main.s -o main.o
+# RUN: as a.s -o a.o
+# RUN: as b0.s -o b0.o
+# RUN: as b1.s -o b1.o
+# RUN: ar rc a.a a.o
+# RUN: ar rc b.a b0.o b1.o
+
+# RUN: ld.bfd main.o a.a b.a
+# RUN: ld.lld --fatal-warnings --warn-backrefs main.o a.a b.a
+
+#--- main.s
+.globl _start
+_start:
+  call foo
+
+#--- a.s
+.globl dup; dup: hlt
+
+#--- b0.s
+.globl foo; foo: call dup
+#--- b1.s
+.globl dup; dup: ret
+```

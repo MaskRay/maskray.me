@@ -283,7 +283,126 @@ uint64_t read_vu128(const uint8_t *&p) {
 }
 ```
 
-This special case of encoding a 64-bit integer also makes the suffix variant of PrefixVarInt less appealing.
+The following code implements 70-bit little-endian SuffixVarInt, which covers our 67-bit need.
+The single-byte case does more work than ULEB128.
+
+```c
+#include <assert.h>
+#include <stdbit.h>
+#include <stdio.h>
+#include <string.h>
+#include <inttypes.h>
+
+/*
+little-endian suffix varint
+
+xxxxxxx1:      7 value bits, 1 byte
+xxxxxx10 ...: 14 value bits, 2 bytes
+xxxxx100 ...: 21 value bits, 3 bytes
+xxxx1000 ...: 28 value bits, 4 bytes
+xxx10000 ...: 35 value bits, 5 bytes
+xx100000 ...: 42 value bits, 6 bytes
+x1000000 ...: 49 value bits, 7 bytes
+10000000 ...: 56 value bits, 8 bytes
+00000000 xxxxxxx1 ...: 63 value bits, 9 bytes
+00000000 xxxxxx10 ...: 70 value bits, 10 bytes
+
+(We could also take bit 9 and use 00000000 xxxxxxx0 ... (71 value bits))
+*/
+
+typedef __uint128_t u128;
+typedef uint64_t uu64 [[gnu::aligned(1)]];
+
+// Read variable-length unsigned 70-bit integer
+u128 read_suffixvarint(unsigned char **buf) {
+  uint64_t x = *(uu64 *)*buf;
+  if ((*buf)[0] == 0x00) {
+    unsigned char b1 = (*buf)[1];
+    if ((b1 & 0x01) == 0x01) {
+      // 9 bytes: 00000000 xxxxxxx1 ... (63 value bits)
+      *buf += 9;
+      return *(uu64 *)(*buf - 8) >> 1;
+    }
+
+    // 10 bytes: 00000000 xxxxxx10 ... (70 value bits)
+    *buf += 10;
+    uint64_t low = *(uu64 *)(*buf - 9) >> 2;
+    return low | ((u128)((*buf)[-1]) << 62);
+  }
+
+  unsigned n = stdc_trailing_zeros(x) + 1;
+  *buf += n;
+  return x << (64 - 8 * n) >> (64 - 7 * n);
+}
+
+// Write variable-length unsigned 70-bit integer
+unsigned write_suffixvarint(unsigned char *buf, u128 x) {
+  assert(x < ((u128)1 << 70) && "needs modification to handle wider integers");
+  unsigned sig_bits = x ? 128 - stdc_leading_zeros(x) : 1;
+  unsigned n = sig_bits >= 64 ? 10 : (sig_bits + 6) / 7;
+  if (n > 8) {
+    if (n == 9) {
+      // 9 bytes: 00000000 xxxxxxx1 ...
+      buf[0] = 0x00;
+      *(uu64 *)(buf + 1) = (x << 1) | 1;
+      return 9;
+    }
+
+    // 10 bytes: 00000000 xxxxxx10 ...
+    buf[0] = 0x00;
+    *(uu64 *)(buf + 1) = (x << 2) | 2;
+    buf[9] = x >> 62;
+    return 10;
+  }
+
+  *(uu64 *)buf = (x << n) | (1ull << (n - 1));
+  return n;
+}
+
+static void print_u128(u128 x) {
+  if (x > UINT64_MAX)
+    printf("%4llx%016llx", (unsigned long long)(x >> 64), (unsigned long long)x);
+  else
+    printf("%20llx", (unsigned long long)x);
+}
+
+int main() {
+  unsigned char buf[16];
+  const u128 tests[] = {
+      0,
+      1,
+      127,
+      128,
+      255,
+      1000,
+      16383,
+      16384,
+      0x7fffffffffffffull,
+      0xffffffffffffffull,
+      0x7fffffffffffffffull,
+      0x8000000000000000ull,
+      0xffffffffffffffffull,
+      (u128)0xffffffffffffffffull << 1,
+      (u128)0xffffffffffffffffull << 6,
+  };
+
+  for (int i = 0; i < sizeof(tests)/sizeof(tests[0]); i++) {
+    u128 original = tests[i];
+    memset(buf, 0, sizeof(buf));
+    unsigned bytes = write_suffixvarint(buf, original);
+    unsigned char *ptr = buf;
+    u128 decoded = read_suffixvarint(&ptr);
+    print_u128(original);
+    printf(" | Bytes: %2u | Hex: ", bytes);
+    for (unsigned j = 0; j < bytes; j++)
+      printf("%02x ", buf[j]);
+    printf("| Decoded: ");
+    print_u128(decoded);
+    printf(" | %s\n", (original == decoded) ? "✓" : "✗");
+  }
+  return 0;
+}
+```
 
 ### Experiments
 

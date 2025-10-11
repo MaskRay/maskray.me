@@ -443,6 +443,29 @@ Qualcomm's [eld linker](https://github.com/qualcomm/eld), open-sourced in 2025, 
 
 This design choice seems redundant as the linker could just use the symbol's `st_size` member to determine which small BSS section to place it in.
 
+### x86-64 large COMMON symbols
+
+In 2005, binutils introduced `SHN_X86_64_LCOMMON` for x86-64's large code model.
+This x86-64-specific feature adds architectural divergence to what is essentially a legacy mechanism.
+Notably, `SHN_X86_64_LCOMMON` isn't even defined in glibc's elf.h.
+
+The processor-specific section index range `SHN_LOPROC~SHN_HIPROC` exists but remains unused across Linux linkers and binary utilities.
+Supporting `SHN_X86_64_LCOMMON` alone would introduce unwanted overhead in performance-critical linker code paths.
+
+Modern alternatives eliminate the need for COMMON blocks:
+
+- Modules approach: Define variables in a single module source file and compile once (recommended practice in modern Fortran)
+- COMDAT sections: For linker behavior where duplicate symbols don't error, place symbols in `.lbss` using COMDAT section groups
+
+I [recommend using COMDAT as a replacement](https://github.com/llvm/llvm-project/pull/161483):
+
+```asm
+.section .lbss.foo,"awG",%nobits,foo,comdat
+.globl foo
+.space 8
+.size foo, 8
+```
+
 ## `.lcomm` directive
 
 `.lcomm sym,size` provides a concise way to define a local symbol in the `.bss` section.

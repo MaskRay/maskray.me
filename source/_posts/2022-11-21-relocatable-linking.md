@@ -54,7 +54,7 @@ When LTO is used, LTO assumes all non-local symbols may be used and avoids elimi
 
 ### Create synthetic sections
 
-The linker does not create synthesized sections (`.interp, .gnu.hash, .got, .plt, .comment`, etc).
+The linker does not create synthesized sections (`.interp, .gnu.hash, .rela.dyn, .got, .plt, .comment`, etc).
 
 ### Map input sections and synthetic sections into output sections
 
@@ -136,6 +136,25 @@ This is similar to `--emit-relocs`. Addends may be changed and implicit addends 
 Some sections may be discarded.
 For a non-`SHF_ALLOC` section, ld.lld applies tombstone values for relocations referencing a symbol defined relative to a discarded section.
 
+Note, only a limited set of relocations could be resolved in relocatable files.
+Specifically, this applies to relocations following the (S-P+A) formula where S refers to a non-ifunc local symbol in the same section as P.
+This behavior mirrors [assembler fixup resolution](/blog/2025-03-16-relocation-generation-in-assemblers):
+
+> Fixup resolution depends on the fixup type:
+>
+> - PC-relative fixups that describe the symbol itself (the relocation operation looks like S - P + A) resolve to a constant if sym_a is a non-ifunc local symbol defined in the current section.
+> - relocation_specifier(S + A) style fixups resolve when S refers to an absolute symbol.
+> - Other fixups, including TLS and GOT related ones, remain unresolved.
+
+Many scenarios prevent relocation resolution:
+
+- Cross-section symbol references
+- Symbols with STB_WEAK or STB_GLOBAL binding (due to potential symbol interposition in shared libraries and linker script symbol assignments)
+- TLS or GOT-related relocations
+- Relocations potentially requiring PLT entries or range-extension thunks
+
+Linkers implement `-r` typically just retain all relocations.
+
 COMMON symbols are not allocated.
 
 ### Shared passes
@@ -215,6 +234,8 @@ ld.lld -m elf_x86_64 -z noexecstack -r -o vmlinux.o  --whole-archive vmlinux.a -
 llvm-objcopy  -j .modinfo -O binary vmlinux.o modules.builtin.modinfo
 tr '\0' '\n' < modules.builtin.modinfo | sed -n 's/^[[:alnum:]:_]*\.file=//p' | tr ' ' '\n' | uniq | sed -e 's:^:kernel/:' -e 's/$/.ko/' > modules.builti
 ```
+
+Kernel modules (`.ko` files) are created by `ld -r` and `modpost`.
 
 Unsurprisingly, the ClangBuiltLinux project's contributors have identified some interesting corner cases with ld.lld.
 I think most issues were reported in 2019 and fixed by me.

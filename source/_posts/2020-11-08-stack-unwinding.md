@@ -495,9 +495,13 @@ Unlike some other metadata sections, simply abandoning garbage collecting is not
 
 ld.lld has some special handling for `.eh_frame`:
 
-* `-M` requires special code
-* `--gc-sections`. `--gc-sections` occurs before `.eh_frame` deduplication/GC.
-* A relocation from `.eh_frame` to a `STT_SECTION` symbol in a discarded section (due to COMDAT group rule) is permitted. Normally such a `STB_LOCAL` relocation from outside of the group is disallowed.
+- In non-relocatable links, `.eh_frame` input sections are represented as `EhInputSection`, different from regular `InputSection`. This is to enable sub-section processing, specifically, CIEs are de-duplicated and FDEs are garbage collected.
+- `splitSections`, before `markLive`, splits `.eh_frame` into pieces in preparation for garbage collection.
+- `markLive` needs to retain `.eh_frame` pieces.
+- `combineEhSections` combines live pieces.
+- During relocation scanning, a relocation from `.eh_frame` to a `STT_SECTION` symbol in a discarded section (due to COMDAT group rule) is permitted. Normally such a `STB_LOCAL` relocation from outside of the group is disallowed.
+- Don't produce dynamic relocations in `.eh_frame` even if `-z notext` is specified. (<https://reviews.llvm.org/D143136>)
+- `-M` requires special code.
 
 When a linker processes `.eh_frame`, it needs to conceptually split `.eh_frame` into CIE/FDE.
 ld.lld splits `.eh_frame` before marking sections as live for `--gc-sections`. ld.lld handles CIE and FDE differently:
@@ -639,6 +643,8 @@ if (indexData & 0x80000000) {
 
 `.ARM.extab` is equivalent to the combined `.eh_frame` and `.gcc_except_table`.
 
+There is no `.ARM.extab` counterpart for AArch64. See <https://github.com/ARM-software/abi-aa/issues/344> for a feature request.
+
 ### Generic model
 
 ```c
@@ -735,109 +741,10 @@ To unwind a stack frame, `unwind_next_frame`
 
 ## SFrame
 
-`.sframe` is a lightweight alternative to `.eh_frame` that uses more compact encoding at the cost of reduced flexibility.
-It focuses on describing three key elements: the Canonical Frame Address (CFA), the return address, and the frame pointer.
-Unlike `.eh_frame`, it does not include personality routines, Language Specific Data Area (LSDA) information, or the ability to encode extra callee-saved registers.
+The `.sframe` format is a lightweight alternative to `.eh_frame` and `.eh_frame_hdr`.
+By trading some functionality and flexibility for compactness, SFrame achieves significantly smaller size while maintaining the essential unwinding capabilities needed by profilers.
 
-An `.sframe` section contains a header followed by an optional auxiliary header and arrays of Function Descriptor Entries (FDEs) and Frame Row Entries (FREs).
-
-The auxiliary header, which is currently unused, could be a replacement for the `.eh_frame` augmentation data.
-This would be useful for things like personality routines, language-specific data areas (LSDAs), and signal frames.
-
-```cpp
-struct sframe_header {
-  struct {
-    uint16_t sfp_magic;
-    uint8_t sfp_version;
-    uint8_t sfp_flags;
-  } sfh_preamble;
-  uint8_t sfh_abi_arch;
-  int8_t sfh_cfa_fixed_fp_offset;
-  // Used by x86-64 to define the return address slot relative to CFA
-  int8_t sfh_cfa_fixed_ra_offset;
-  // Size in bytes of the auxiliary header, allowing extensibility
-  uint8_t sfh_auxhdr_len;
-  // Numbers of FDEs and FREs
-  uint32_t sfh_num_fdes;
-  uint32_t sfh_num_fres;
-  // Size in bytes of FREs
-  uint32_t sfh_fre_len;
-  // Offsets in bytes of FDEs and FREs
-  uint32_t sfh_fdeoff;
-  uint32_t sfh_freoff;
-} ATTRIBUTE_PACKED;
-```
-
-Each FDE describes a function's start address and references its associated Frame Row Entries (FREs).
-
-```cpp
-struct sframe_func_desc_entry {
-  int32_t sfde_func_start_address;
-  uint32_t sfde_func_size;
-  uint32_t sfde_func_start_fre_off;
-  uint32_t sfde_func_num_fres;
-  // bits 0-3 fretype: sfre_start_address type
-  // bit 4 fdetype: SFRAME_FDE_TYPE_PCINC or SFRAME_FDE_TYPE_PCMASK
-  // bit 5 pauth_key: (AArch64 only) the signing key for the return address
-  uint8_t sfde_func_info;
-  // The size of the repetitive code block for SFRAME_FDE_TYPE_PCMASK; used by .plt
-  uint8_t sfde_func_rep_size;
-  uint16_t sfde_func_padding2;
-} ATTRIBUTE_PACKED;
-
-template <class AddrType>
-struct sframe_frame_row_entry {
-  // If the fdetype is SFRAME_FDE_TYPE_PCINC, this is an offset relative to sfde_func_start_address
-  AddrType sfre_start_address;
-  // bit 0 fre_cfa_base_reg_id: define BASE_REG as either FP or SP
-  // bits 1-4 fre_offset_count: typically 1 to 3, describing CFA, FP, and RA
-  // bits 5-6 fre_offset_size: byte size of offset entries (1, 2, or 4 bytes)
-  sframe_fre_info sfre_info;
-} ATTRIBUTE_PACKED;
-```
-
-Each FRE contains variable-length stack offsets stored as trailing data with sizes of `uint8_t`, `uint16_t`, or `uint32_t`, determined by the `fre_offset_size` field.
-The interpretation of these offsets is architecture-specific:
-
-x86-64:
-
-- First offset: Encodes CFA as `BASE_REG + offset`
-- Second offset (if present): Encodes FP as `CFA + offset`  
-- Implicit return address: Computed as `CFA + sfh_cfa_fixed_ra_offset` (using header field)
-
-AArch64:
-
-- First offset: Encodes CFA as `BASE_REG + offset`
-- Second offset: Encodes return address as `CFA + offset`
-- Third offset (if present): Encodes FP as `CFA + offset`
-
-SFrame reduces size compared to `.eh_frame` plus `.eh_frame_hdr` by:
-
-- Eliminating `.eh_frame_hdr` through sorted `sfde_func_start_address` fields
-- Replacing CIE pointers with direct FDE-to-FRE references
-- Using variable-width `sfre_start_address` fields (1 or 2 bytes) for small functions
-- Storing start addresses instead of address ranges. `.eh_frame` address ranges
-- Start addresses in a small function use 1 or 2 byte fields, more efficient than `.eh_frame` initial\_location, which needs at least 4 bytes (`DW_EH_PE_sdata4`).
-- Hard-coding stack offsets rather than using flexible register specifications
-
-However, the bytecode design of `.eh_frame` can sometimes be more efficient than `.sframe`, as demonstrated on x86-64.
-
-The format includes endianness variations that complicate toolchain support.
-I think we should use a little-endian format universally, regardless of the target system's native endianness, removing `template <class Endian>` from C++ code.
-On the big-endian z/Architecture, this is efficient: the LOAD REVERSED instructions are used by the bswap versions in the following program, not even requiring extra instructions.
-
-```c
-#define WIDTH(x) \
-typedef __UINT##x##_TYPE__ [[gnu::aligned(1)]] uint##x; \
-uint##x load_inc##x(uint##x *p) { return *p+1; } \
-uint##x load_bswap_inc##x(uint##x *p) { return __builtin_bswap##x(*p)+1; }; \
-uint##x load_eq##x(uint##x *p) { return *p==3; } \
-uint##x load_bswap_eq##x(uint##x *p) { return __builtin_bswap##x(*p)==3; }; \
-
-WIDTH(16);
-WIDTH(32);
-WIDTH(64);
-```
+Please check out [Remarks on SFrame](/blog/2025-09-28-remarks-on-sframe).
 
 ### LLVM
 

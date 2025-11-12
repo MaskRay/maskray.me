@@ -150,8 +150,8 @@ Many scenarios prevent relocation resolution:
 
 - Cross-section symbol references
 - Symbols with STB_WEAK or STB_GLOBAL binding (due to potential symbol interposition in shared libraries and linker script symbol assignments)
-- TLS or GOT-related relocations
-- Relocations potentially requiring PLT entries or range-extension thunks
+- TLS or GOT-related relocations, and relocations potentially requiring PLT entries
+- Relocations potentially requiring range-extension thunks or linker relaxation
 
 Linkers implement `-r` typically just retain all relocations.
 
@@ -269,7 +269,7 @@ See [COMDAT and section group#GRP_COMDAT](/blog/2021-07-25-comdat-and-section-gr
 Here are the steps:
 
 - Compile with hidden symbols by default (`-fvisibility=hidden` for definitions, or `#pragma GCC visibility("hidden")` for both definitions and references). Mark necessary symbols as exported
-- Run `ld -r --force-group-allocation`
+- Run `ld -r --force-group-allocation`. Optionally specify `--unique=*` to keep section granularity.
 - Process the output with `objcopy --localize-hidden` with possibly other options.
 
 ### Find more projects using relocatable linking

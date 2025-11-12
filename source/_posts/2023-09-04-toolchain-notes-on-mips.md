@@ -455,7 +455,13 @@ foo:
 
 ### Paired relocations
 
-TODO
+> In a .rel section, a pair of adjacent relocations, one a hi16 and the other a lo16, each provide a 16-bit partial addend. The hi16 halfword is shifted left 16 bits, the lo16 halfword is sign extended, and the two resulting values are added. (The two relocations need not actually be adjacent in a .rel section -- a single hi16 addend may be used with multiple lo16 addends -- but processing this combination requires fallable heuristics, so these relocations should not be used in .rel sections.)
+
+```
+R_MIPS_HI16 , R_MIPS_LO16 
+R_MIPS_GOT16 (if the symbol is non-local), R_MIPS_LO16 
+R_MIPS_HI16, R_MIPS_PCLO16
+```
 
 ## Distributions
 

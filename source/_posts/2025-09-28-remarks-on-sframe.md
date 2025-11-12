@@ -5,10 +5,13 @@ author: MaskRay
 tags: [linker,sframe]
 ---
 
-The `.sframe` format is a lightweight alternative to `.eh_frame` and `.eh_frame_hdr` designed for efficient [stack unwinding](/blog/2020-11-08-stack-unwinding).
-By trading some functionality and flexibility for compactness, SFrame achieves significantly smaller size while maintaining the essential unwinding capabilities needed by profilers.
+SFrame is a new format for [stack walking, suitable for profilers](/blog/2020-11-08-stack-unwinding).
+It intends to replace Linux's in-kernel [ORC unwind format](https://docs.kernel.org/arch/x86/orc-unwinder.html) and serve as an alternative to `.eh_frame` and `.eh_frame_hdr` for userspace programs.
+While SFrame eliminates some `.eh_frame` CIE/FDE overhead, it sacrifices functionality (e.g., personality, LSDA, callee-saved registers) and flexibility, and its stack offsets are less compact than `.eh_frame`'s bytecode-style CFI instructions.
+In llvm-project executables I've tested on x86-64, `.sframe` section is 20% larger than `.eh_frame`.
+It also remains significantly larger than highly compact schemes like [Windows ARM64 unwind codes](https://www.corsix.org/content/windows-arm64-unwind-codes).
 
-SFrame focuses on three fundamental elements for each function:
+SFrame describes three elements for each function:
 
 - Canonical Frame Address (CFA): The base address for stack frame calculations
 - Return address
@@ -132,11 +135,27 @@ The explicit return address encoding accommodates AArch64's variable stack layou
 
 ### s390x
 
+FP and return address may not be saved at the same time.
+In leaf functions GCC might save the return address and FP to floating-point registers.
+
+- First offset: Encodes CFA as `BASE_REG + offset`
+- Second offset (if preset): Encodes the return address as one of
+  + stack slot: `CFA + offset2, if (offset2 & 1 == 0)`
+  + register number: `offset2 >> 1, if (offset2 & 1 == 1)`
+  + not saved: `if (offset2 == SFRAME_FRE_RA_OFFSET_INVALID)`
+- Third offset (if present)
+  + FP stack slot = CFA + offset3, if (offset3 & 1 == 0)
+  + FP register number = offset3 >> 1, if (offset3 & 1 == 1)
+
+The format uses 0 (an invalid SFrame RA offset from CFA value) to indicate that the return address is not saved, while FP is saved.
+
+## ORC and `.sframe`
+
 TODO
 
 ## `.eh_frame` and `.sframe`
 
-SFrame reduces size compared to `.eh_frame` plus `.eh_frame_hdr` by:
+SFrame reduces header size compared to `.eh_frame` plus `.eh_frame_hdr` by:
 
 - Eliminating `.eh_frame_hdr` through sorted `sfde_func_start_address` fields
 - Replacing CIE pointers with direct FDE-to-FRE references
@@ -149,15 +168,15 @@ However, the bytecode design of `.eh_frame` can sometimes be more efficient than
 
 ---
 
-SFrame serves as a specialized complement to `.eh_frame` rather than a complement replacement.
+SFrame serves as a specialized complement to `.eh_frame` rather than a complete replacement.
 The current version does not include personality routines, Language Specific Data Area (LSDA) information, or the ability to encode extra callee-saved registers.
 While these constraints make SFrame ideal for profilers and debuggers, they prevent it from supporting C++ exception handling, where libstdc++/libc++abi requires the full `.eh_frame` feature set.
 
 In practice, executables and shared objects will likely contain all three sections:
 
 - `.eh_frame`: Complete unwinding information for exception handling
-- `.eh_frame_hdr`: Fast lookup table for `.eh_frame`
-- `.sframe`: Compact unwinding information for profilers
+- `.eh_frame_hdr` (encompassed by the `PT_GNU_EH_FRAME` program header): Fast lookup table for `.eh_frame`
+- `.sframe` (encompassed by the `PT_GNU_SFRAME` program header)
 
 The auxiliary header, currently unused, provides a pathway for future enhancements.
 It could potentially accommodate `.eh_frame` augmentation data such as personality routines, language-specific data areas (LSDAs), and signal frame handling, bridging some of the current functionality gaps.
@@ -182,46 +201,37 @@ The typical section layout creates significant gaps between `.sframe` and `.ltex
 .lbss           // Large BSS
 ```
 
-## Linking and execution views
+## Object file format design issues
 
-SFrame employs a unified indexed format across both relocatable files (linking view) and executable files (execution view).
-While this design consistency appears elegant, it introduces significant complications in toolchain implementation.
+### Mandatory index building problems
 
 Currently, Binutils enforces a single-element structure within each `.sframe` section, regardless of whether it resides in a relocatable object or final executable.
-This approach differs from DWARF sections, which support multiple concatenated elements, each with its own header and body.
+While the `SFRAME_F_FDE_SORTED` flag can be cleared to permit unsorted FDEs, proposed unwinder implementations for the Linux kernel do not seem to support multiple elements in a single section.
+The design choice makes linker merging mandatory rather than optional.
 
 This design choice stems from Linux kernel requirements, where kernel modules are relocatable files created with `ld -r`.
-The kernel's SFrame support expects each module to contain a single indexed format for efficient runtime processing.
+The pending SFrame support for linux-perf expects each module to contain a single indexed format for efficient runtime processing.
 Consequently, GNU ld merges all input `.sframe` sections into a single indexed element, even when producing relocatable files.
 This behavior deviates from standard [relocatable linking](/blog/2022-11-21-relocatable-linking) conventions that suppress synthetic section finalization.
 
-The fundamental design issue lies in making linker merging mandatory.
+This approach differs from almost every metadata section, which support multiple concatenated elements, each with its own header and body.
+LLVM supports numerous well-behaved metadata sections (`__asan_globals`, `.stack_sizes`, `__patchable_function_entries`, `__llvm_prf_cnts`, `__sancov_bools`, `__llvm_covmap`, `__llvm_gcov_ctr_section`, `.llvmcmd`, and `llvm_offload_entries`) that concatenate without issues.
+SFrame stands apart as the only metadata section demanding version-specific merging as default linker behavior, creating unprecedented maintenance burden.
 For optimal portability, unwinders should support multiple-element structures within a `.sframe` section.
+
+For optimal portability, we must support object files from diverse origins—not just those built from a single toolchain.
+In environments where almost everything is built from source with a single toolchain offering strong SFrame support, forcing default-on index building may be acceptable.
+However, we must also accommodate environments with prebuilt object files using older SFrame versions, or toolchains that don't support old formats.
+I believe unwinders should support multiple-element structures within a `.sframe` section.
 When a linker builds an index for `.sframe`, it should be viewed as an optimization that relieves the unwinder from constructing its own index at runtime.
 This index construction should remain optional rather than required.
-While the `SFRAME_F_FDE_SORTED` flag can be cleared to permit unsorted FDEs, current unwinder implementations do not seem to support multiple elements in a single section.
 
-A future version should distinguish between linking and execution views:
+### Section group compliance and garbage collection issues
 
-- Linking view: Assemblers produce a simpler format, omitting index-specific metadata fields
-- Linkers concatenate `.sframe` input sections by default, consistent with DWARF and other metadata sections
-- A new `--sframe-index` option enables linkers to synthesize a `.sframe_idx` section containing the indexed format, analogous to [`--gdb-index` and `--debug-names`](/blog/2022-10-30-distribution-of-debug-information).
-  The linker builds `.sframe_idx` from input `.sframe` sections.
-  To support the Linux kernel workflow (`ld -r` for kernel modules), `ld -r --sframe-index` must also generate the indexed format.
-- Linker scripts control placement using: `.sframe_idx : { *(.sframe_idx) }`. From the linker perspective, `.sframe` input sections have been replaced by the linker-synthesized `.sframe_idx`.
-  This output section description places the `.sframe_idx` into the `.sframe_idx` output section.
-
-The linking view could omit index-specific metadata fields such as `sfh_num_fdes`, `sfh_num_fres`, `sfh_fdeoff`, and `sfh_freoff`.
-
-The `.debug_pubnames`/`.gdb_index` design provides an excellent model for separate linking and execution views.
-While DWARF v5's `.debug_names` unifies both views at the cost of larger linking formats, it represents a reasonable tradeoff since relocatable files contain only a single `.debug_names` section, and debuggers can efficiently load sections with concatenated name tables.
-
-## Section group compliance issues
-
-The current monolithic `.sframe` design creates ELF specification violations when dealing with [COMDAT section groups](/blog/2021-07-25-comdat-and-section-group).
 GNU Assembler generates a single `.sframe` section containing relocations to `STB_LOCAL` symbols from multiple text sections, including those in different section groups.
 
-This violates the ELF section group rule, which states:
+This creates ELF specification violations when a referenced text section is discarded by the [COMDAT section group rule](/blog/2021-07-25-comdat-and-section-group).
+The ELF specification states:
 
 > A symbol table entry with `STB_LOCAL` binding that is defined relative to one of a group's sections, and that is contained in a symbol table section that is not part of the group, must be discarded if the group members are discarded. References to this symbol table entry from outside the group are not allowed.
 
@@ -268,16 +278,140 @@ This approach would create multiple SFrame sections within relocatable files, ma
 While this comes with the overhead of additional section headers (where each `Elf64_Shdr` consumes 64 bytes), it's a cost we should pay to be a good ELF citizen.
 This reinforces the value of my [section header reduction proposal](/blog/2024-04-01-light-elf-exploring-potential-size-reduction).
 
-## Linker relaxation considerations
+### Version compatibility challenges
+
+The current design creates significant version compatibility problems.
+When a linker only supports v3 but encounters object files with v2 `.sframe` sections, it faces impossible choices:
+
+- Discard v2 sections: Silently losing functionality
+- Report errors: Breaking builds with mixed-version object files
+- Concatenate sections: Currently unsupported by unwinders
+- Upgrade v2 to v3: Requires maintaining version-specific merge logic for every version
+
+This differs fundamentally from reading a format—each version needs version-specific *merging* logic in every linker.
+Consider the scenario where v2 uses layout A, v3 uses layout B, and v4 uses layout C.
+A linker receiving objects with all three versions must produce coherent output with proper indexing while maintaining version-specific merge logic for each.
+
+Real-world mixing scenarios include:
+
+- Third-party vendor libraries built with older toolchains
+- Users linking against prebuilt libraries from different sources
+- Users who don't need SFrame but must handle prebuilt libraries with older versions
+- Users updating their linker to a newer version that drops legacy SFrame support
+
+Most users will not need stack tracing features—this may change eventually, but that will take many years.
+In the meantime, they must accept unneeded information while handling the resulting compatibility issues.
+
+Requiring version-specific merging as default behavior would create maintenance burden unmatched by any other loadable metadata section.
+
+### Proposed format separation
+
+A future version should distinguish between linking and execution views to resolve the compatibility and maintenance challenges outlined above.
+This separation has precedent in existing debug formats: `.debug_pubnames`/`.gdb_index` provides an excellent model for separate linking and execution views.
+DWARF v5's `.debug_names` takes a different approach, unifying both views at the cost of larger linking formats—a reasonable tradeoff since relocatable files contain only a single `.debug_names` section, and debuggers can efficiently load sections with concatenated name tables.
+
+For SFrame, the separation would work as follows:
+
+**Separate linking format.** Assemblers produce a simpler format, omitting index-specific metadata fields such as `sfh_num_fdes`, `sfh_num_fres`, `sfh_fdeoff`, and `sfh_freoff`.
+
+**Default concatenation behavior.** Linkers concatenate `.sframe` input sections by default, consistent with DWARF and other metadata sections.
+Linkers can handle mixed-version scenarios gracefully without requiring version-specific merge logic, eliminating the impossible maintenance burden of keeping version-specific merge logic for every SFrame version in every linker implementation.
+Distributions can roll out SFrame support incrementally without requiring all linkers to support index building immediately.
+
+The unwinder implementation cost is manageable.
+Stack unwinders already need to support `.sframe` sections across the main executable and all shared objects.
+Supporting multiple concatenated elements within a single `.sframe` section presents no fundamental technical barrier—this is a one-time implementation cost that provides forward and backward compatibility.
+
+**Optional index construction.** When the opt-in option `--sframe-index` is requested, the linker builds an index from recognized versions while reporting warnings for unrecognized ones.
+This is analogous to [`--gdb-index` and `--debug-names`](/blog/2022-10-30-distribution-of-debug-information).
+
+With this approach, the linker builds `.sframe_idx` from input `.sframe` sections.
+To support the Linux kernel workflow (`ld -r` for kernel modules), `ld -r --sframe-index` must also generate the indexed format.
+
+The index construction happens before section matching in linke scripts.
+The output section description `.sframe_idx : { *(.sframe_idx) }` places the synthesized `.sframe_idx` into the `.sframe_idx` output section.
+`.sframe` input sections have been replaced by the linker-synthesized `.sframe_idx`, so we don't write `*(.sframe)`.
+
+## Alternative: Deriving SFrame from .eh_frame
+
+An alternative approach could eliminate the need for assemblers to generate `.sframe` sections directly.
+Instead, the linker would merge and optimize `.eh_frame` as usual (which requires CIE and FDE boundary information), then derive `.sframe` (or `.sframe_idx`) from the optimized `.eh_frame`.
+
+This approach offers a significant advantage: since the linker only reads the stable `.eh_frame` format and produces `.sframe` or `.sframe_idx` as output, version compatibility concerns disappear entirely.
+
+While CFI instruction decoding introduces additional complexity (a step previously unneeded), this is balanced by the architectural advantage of centralizing the conversion logic.
+Rather than scattering format-specific processing code throughout the linker (similar to how `SHF_MERGE` and `.eh_frame` require special internal representations), the transformation logic remains localized.
+
+The counterargument centers on maintenance burden.
+This fine-grained knowledge of the SFrame format may expose the linker to more frequent updates as the format evolves—a serious risk, given that the linker's foundational role in the build process demands exceptional stability and robustness.
+
+### Post-processing alternative
+
+A more cautious intermediate strategy could leverage existing Linux distribution post-processing tools, modifying them to append `.sframe` sections to executable and shared object files after linking completes.
+While this introduces more friction than native linker support and requires integration into package build systems, it offers several compelling advantages:
+
+- Allows `.sframe` format experimentation without imposing linker complexity
+- Provides time for the format to mature and prove its value before committing to linker integration
+- Enables testing across diverse userspace packages in real-world scenarios
+- Post-link tools can optimize and even overwrite sections in-place without linker constraints
+- For cases where optimization significantly shrinks the section, `.sframe` can be placed at the end of the file (similar to BOLT moving `.rodata`)
+
+However, this approach faces practical challenges.
+Post-processing adds build complexity, particularly with features like build-ids and read-only file systems.
+The success of `.gdb_index`, where linker support (`--gdb-index`) proved more popular than post-link tools, suggests that native linker support eventually becomes necessary for widespread adoption.
+
+The key question is timing: should linker integration be the starting point or the outcome of proven stability?
+
+## SHF_ALLOC considerations
+
+The `.sframe` section carries the `SHF_ALLOC` flag, meaning it's loaded as part of the program's read-only data segment.
+This design choice creates tradeoffs:
+
+**With SHF_ALLOC:**
+- `.sframe` contributes to initial read-only data segment consumption
+- Can be accessed directly as part of the memory-mapped area, relying on kernel's page fault on demand mechanism.
+
+**Without SHF_ALLOC:**
+- No upfront memory cost
+- Tracers must open the file and initiate IO to mmap the section on demand
+- Runtime cost may not amortize well for frequent tracing
+
+Analysis of 337 files in /usr/bin and /usr/lib/x86_64-linux-gnu/ shows `.eh_frame` typically consumes 5.2% (median: 5.1%) of file size:
+
+```
+EH_Frame size distribution:
+  Min: 0.3%    Max: 11.5%    Mean: 5.2%    Median: 5.1%
+
+  0%-1%: 7 files      5%-6%: 62 files
+  1%-2%: 17 files     6%-7%: 33 files
+  2%-3%: 37 files     7%-8%: 36 files
+  3%-4%: 49 files     8%-9%: 20 files
+  4%-5%: 50 files     9%-10%: 20 files
+                      10%-12%: 6 files
+```
+
+If `.sframe` size is comparable to `.eh_frame`, this represents significant overhead for applications that never use stack tracing—likely the majority of users.
+Most users will not need stack trace features, raising the question of whether having `.sframe` always loaded is an acceptable overhead for distributions shipping it by default.
+
+perf supports `.debug_frame` (tools/perf/util/unwind-libunwind-local.c), which does not have `SHF_ALLOC`.
+While there's a difference between status quo and what's optimal, the non-`SHF_ALLOC` approach deserves consideration for scenarios where runtime tracing overhead can be amortized or where memory footprint matters more than immediate access.
+
+## Kernel challenges
+
+The `.sframe` section may not be resident in the physical memory. SFrame proposers are attempting to defer user stack traces until syscall boundaries.
+
+Ian Rogers points out that BPF programs can no longer simply stack trace user code. This change breaks stack trace deduplication, a commonly used BPF primitive.
+
+## Miscellaneous minor considerations
+
+**Linker relaxation considerations:**
 
 Since `.sframe` carries the `SHF_ALLOC` flag, it affects text section addresses and consequently influences [linker relaxation](/blog/2022-07-10-riscv-linker-relaxation-in-lld) on architectures like RISC-V and LoongArch.
 
 If variable-length encoding is introduced to the format, `.sframe` would behave as an address-dependent section similar to `.relr.dyn`.
 However, this dependency should not pose significant implementation challenges.
 
-## Linker complexity
-
-## Endianness considerations
+**Endianness considerations:**
 
 The SFrame format currently supports endianness variants, which complicates toolchain implementation.
 While runtime consumers typically target a single endianness, development tools must handle both variants to support cross-compilation workflows.
@@ -311,7 +445,7 @@ However, I understand that my opinion is probably not popular within the object 
 
 ## Questioned benefits
 
-SFrame's primary value proposition centers on enabling frame pointer omission while preserving unwinding capabilities.
+SFrame's primary benefit centers on enabling frame pointer omission while preserving unwinding capabilities.
 In scenarios where users already omit leaf frame pointers, SFrame could theoretically allow switching from `-fno-omit-frame-pointer -momit-leaf-frame-pointer` to `-fomit-frame-pointer -momit-leaf-frame-pointer`.
 This benefit appears most significant on x86-64, which has limited general-purpose registers (without APX).
 Performance analyses show mixed results: some studies claim frame pointers degrade performance by less than 1%, while others suggest 1-2%.
@@ -319,23 +453,49 @@ However, this argument overlooks a critical tradeoff—SFrame unwinding itself p
 
 Another claimed advantage is SFrame's ability to provide coverage in function prologues and epilogues, where frame-pointer-based unwinding may miss frames.
 Yet this overlooks a straightforward alternative: frame pointer unwinding can be enhanced to detect prologue and epilogue patterns by disassembling instructions at the program counter.
-No comparative analysis exists between this enhancement approach and SFrame's solution.
 
 SFrame also faces a practical consideration: the `.sframe` section likely requires kernel page-in during unwinding, while the process stack is more likely already resident in physical memory.
+As Ian Rogers noted in [LWN](https://lwn.net/Articles/1030223/), system-wide profiling encounters limitations when system calls haven't transitioned to user code, BPF helpers may return placeholder values, and JIT compilers require additional SFrame support.
 
 Looking ahead, hardware-assisted unwinding through features like x86 Shadow Stack and AArch64 Guarded Control Stack may reshape the entire landscape, potentially reducing the relevance of metadata-based unwinding formats.
+Meanwhile, compact unwinding schemes like [Windows ARM64](https://www.corsix.org/content/windows-arm64-unwind-codes) demonstrate that significantly smaller metadata formats remain viable alternatives to both SFrame and `.eh_frame`.
+Proposals like Asynchronous Compact Unwind Descriptors have demonstrated that compact unwind formats can work with shrink-wrapping optimizations.
+There is a feature request for a compact information for AArch64 <https://github.com/ARM-software/abi-aa/issues/344>
 
 ## Summary
 
-SFrame represents a pragmatic approach to stack unwinding that achieves significant size reductions by trading flexibility for compactness.
-Its design presents several implementation challenges that merit consideration for future versions.
+Beyond these fundamental questions about SFrame's value proposition, the format presents a size improvement to Linux kernel's ORC unwinder.
+Its design presents several implementation challenges that merit consideration for future versions:
 
-- The unified linking/execution view complicates toolchain implementation without clear benefits
-- Section group compliance issues create significant concerns for linker developers
+- Object file format design issues (mandatory index building, section group compliance, version compatibility)
 - Limited large text section support restricts deployment in modern binaries
-- Uncertainty remains about SFrame's viability as a complete `.eh_frame` replacement
+- Size issue
 
-Beyond these implementation concerns, SFrame faces broader ecosystem challenges.
-As Ian Rogers noted in [LWN](https://lwn.net/Articles/1030223/), system-wide profiling encounters limitations when system calls haven't transitioned to user code, BPF helpers may return placeholder values, and JIT compilers require additional SFrame support.
+These technical concerns, combined with the fundamental value questions raised above, suggest that careful consideration is warranted before widespread adoption.
 
-The format's future also depends on evolving unwinding strategies. Frame pointer unwinding could potentially be enhanced to detect prologue and epilogue patterns, though comprehensive comparisons with SFrame remain absent from current literature.
+## If we proceed, here is how to do it right
+
+According to [this comment on llvm-project #64449](https://github.com/llvm/llvm-project/issues/64449#issuecomment-3433777733), "v3 is the version that will be submitted upstream when the time is right."
+Please share feedback on the format before it's finalized, even if you may not be impressed with the design.
+
+To ensure rapid SFrame evolution without compatibility concerns, a better approach is to build a library that parses `.eh_frame` and generates SFrame.
+The Linux kernel can then use this library (in objtool?) to generate SFrame for vmlinux and modules.
+Relying on assembler/linker output for this critical metadata format requires a level of stability that is currently concerning.
+
+The ongoing maintenance implications warrant particular attention.
+Observing the binutils mailing list reveals a significant volume of SFrame commits.
+Most linker features stabilize quickly after initial implementation, but SFrame appears to require continued evolution.
+Given the linker's foundational role in the build process, which demands exceptional stability and robustness, the long-term maintenance burden deserves careful consideration.
+
+Early integration into GNU toolchain has provided valuable feedback for format evolution, but this comes at the cost of coupling the format's maturity to linker stability.
+The SFrame GNU toolchain developers exhibit a [concerning tendency to disregard ELF and linker conventions](https://sourceware.org/pipermail/binutils/2025-October/144974.html)—a serious problem for all linker maintainers.
+
+### Learning from existing compact unwind implementations
+
+LLVM has had a battle-tested compact unwind format in production use since 2009 with OS X 10.6. The efficiency gains are dramatic even if it might only cover synchronous unwinding needs.
+OpenVMS's x86-64 port, which is ELF-based, also adopted this format as documented in their "VSI OpenVMS Calling Standard" and their [2018 post on LLVM Discourse](https://discourse.llvm.org/t/rfc-asynchronous-unwind-tables-attribute/59282).
+This isn't to suggest we should simply adopt the existing compact unwind format wholesale.
+The x86-64 design dates back to 2009 or earlier, and there are likely improvements we can make.
+However, we should aim for similar or better efficiency gains.
+
+On AArch64, there are at least two formats the ELF one can learn from: LLVM's compact unwind format (aarch64) and Windows ARM64 Frame Unwind Code.

@@ -349,3 +349,6 @@ Since v4.10, the `CONFIG_LD_DEAD_CODE_DATA_ELIMINATION` configuration option is 
 
 In `link.exe`, garbage collection only works with COMDAT sections.
 This is not a major issue in practice because with function sections every text section is in a COMDAT, either `IMAGE_COMDAT_SELECT_NODUPLICATES` or `IMAGE_COMDAT_SELECT_ANY`.
+
+Unresolved external symbols are diagnosed before garbage collection, which can be suppressed with `/force:unresolved` or `/force`.
+<https://developercommunity.visualstudio.com/t/unresolved-external-symbol-referenced-in-function/1016851>

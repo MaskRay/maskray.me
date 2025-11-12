@@ -13,6 +13,8 @@ Many people just want to know how to define or reference versioned symbols prope
 In 1995, Solaris' link editor and ld.so introduced the symbol versioning mechanism.
 Ulrich Drepper and Eric Youngdale borrowed Solaris' symbol versioning in 1997 and designed the GNU style symbol versioning for glibc.
 
+gnu-gabi specification: <https://sourceware.org/gnu-gabi/program-loading-and-dynamic-linking.txt#:~:text=versioning>
+
 <!-- more -->
 
 When a shared object is updated and the behavior of a symbol changes, a `DT_SONAME` version bump is traditionally required to indicate ABI incompatibility (such as changing the type of parameters or return values).
@@ -80,9 +82,9 @@ musl ld.so falls into this category.
 
 ### Version index values
 
-Index 0 is called `VER_NDX_LOCAL`. The binding of the symbol will be changed to `STB_LOCAL`.
-Index 1 is called `VER_NDX_GLOBAL`. It has no special effect and is used for unversioned symbols.
-Index 2 to 0xffef are used for user defined versions.
+- Index 0 is called `VER_NDX_LOCAL` (misleading name, should have been `VER_NDX_NONE`). For defined symbols, the binding of the symbol will be changed to `STB_LOCAL`.
+- Index 1 is called `VER_NDX_GLOBAL`. It has no special effect and is used for unversioned symbols.
+- Index 2 to 0xffef are used for user defined versions.
 
 Defined versioned symbols have two forms:
 
@@ -97,6 +99,15 @@ The resolution of [PR28158](https://sourceware.org/bugzilla/show_bug.cgi?id=2815
 
 Usually versioned symbols are only defined in shared objects, but executables can have defined versioned symbols as well.
 (When a shared object is updated, the old symbols are retained so that other shared objects do not need to be relinked, and executable files usually do not provide versioned symbols for other shared objects to reference.)
+
+In the `.gnu.version` section (described by the `DT_VERSYM` tag), each symbol is assigned a version index:
+
+- Unversioned undefined symbols use index 0. However, LLD before 22 and GNU ld versions between 2.35 and 2.45 use index 1. See <https://sourceware.org/bugzilla/show_bug.cgi?id=33577#c34>
+- Versioned undefined symbols use index >= 2
+- Unversioned defined symbols use index 1
+- Versioned defined symbols use index >= 2
+
+Defined symbols of index 0 are local and should not have an entry in `.dynsym` or `.gnu.version`.
 
 ### Example
 
@@ -349,7 +360,7 @@ foo:
 ```
 
 If the version script contains `v1 {};`, the output will have just `foo@v` with GNU ld and ld.lld>=13.0.0.
-The output will have both `foo` and `foo@v1 with gold and older ld.lld.
+The output will have both `foo` and `foo@v1` with gold and older ld.lld.
 
 If the version script contains `v1 { foo; };`, the output will have just `foo@v1` with GNU ld, gold, and ld.lld>=13.0.0.
 The output will have both `foo` and `foo@v1 with older ld.lld.

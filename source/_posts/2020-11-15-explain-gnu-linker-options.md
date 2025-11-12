@@ -863,6 +863,18 @@ When `--symbol-ordering-file=` is specified, sections described in that file are
 
 GNU ld 2.41 introduced the option to omit the section header table.
 
+### `--unique`
+
+By default, the linker combines all input sections with the same name into a single output section.
+For example, all `.text` sections from different object files are merged into one `.text` output section.
+
+GNU ld's `--unique` option creates separate output sections for each orphan section.
+Note that with `-r` (relocatable output), the internal linker script still causes certain sections like `.text` and `.debug_info` to be combined.
+
+For finer control, use `--unique=glob` to match specific patterns - for example, `--unique=*` matches all sections.
+
+ld.lld only implements the `--unique` form, which applies to all sections. It treats all input sections orphans in the absence of a linker script.
+
 ## Analysis related
 
 ### `--cref`
@@ -882,6 +894,10 @@ Turn warnings into errors. The difference between warning and error is that besi
 ### `--noinhibit-exec`
 
 Turn some errors into warnings. Be careful not to specify `--fatal-warnings` to upgrade the degraded warnings to errors again:)
+
+### `--no-warnings`
+
+Suppress warnings. Warnings turned to errors due to `--fatal-warnings` are not suppressed.
 
 ## Randomness related
 
@@ -934,20 +950,22 @@ pushq $0x0
 jmpq .plt
 ```
 
-However, I think this feature is obsoleted and irrelevant nowadays.
+However, this feature is largely obsolete nowadays due to the prevailing use of `-Wl,-z,relro,-z,now` (BIND_NOW).
+PLT entries behave as functions without a prologue. A profiler can trivially retrieve the return address by using the default rule: if a code region is not covered by metadata, assume the return address is available at `*rsp` (x86-64).
+
 To recognize the PLT name, a profiler needs to do:
 
-* Parse the `.plt` section to know the region of PLT entries
+* Parse the `.plt` section to identify the region of PLT entries
 * Parse `.rel[a].plt` to get `R_*_JUMP_SLOT` dynamic relocations and their referenced symbol names.
-* If the current PC is within the PLT region, parse nearly instructions and find the GOT load. The associated `R_*_JUMP_SLOT` identifies the symbol name.
+* If the current PC is within the PLT region, parse nearby instructions and find the GOT load. The associated `R_*_JUMP_SLOT` identifies the symbol name.
 * Concatenate the symbol name and `@plt` to form `foo@plt`
 
-Note: `foo@plt` is a convention used by some tools, but it is not a name in the symbol table.
+Note: `foo@plt` is a convention used by tools like objdump, but the object file doesn't contain such a symbol.
 
 gdb has heuristics to identify this situation.
 
-This problem will not affect the c++ exception. The plt entry is a tail call, and the `_Unwind_RaiseException` called by `__cxa_throw` will penetrate the tail calls of the ld.so resolver and plt entry.
-The pc will be restored to the next instruction of the caller of the plt entry.
+This problem will not affect the C++ exception. The PLT entry is a tail call, and the `_Unwind_RaiseException` called by `__cxa_throw` will penetrate the tail calls of the ld.so resolver and PLT entry.
+The PC will be restored to the next instruction of the caller of the PLT entry.
 
 ```cpp
 // b.cc - b.so

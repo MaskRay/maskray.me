@@ -4,12 +4,15 @@ author: MaskRay
 tags: [gcc,llvm]
 ---
 
-Update in 2025-09.
+Update in 2025-11.
 
 The main usage of stack unwinding is:
 
-* To obtain a stack trace for debugger, crash reporter, profiler, garbage collector, etc.
-* With personality routines and language specific data area, to implement C++ exceptions (Itanium C++ ABI). See [C++ exception handling ABI](/blog/2020-12-12-c++-exception-handling-abi)
+* To obtain a stack trace for debuggers, crash reporters, profilers, garbage collectors, etc.
+* To implement C++ exceptions (Itanium C++ ABI) using personality routines and language-specific data area. See [C++ exception handling ABI](/blog/2020-12-12-c++-exception-handling-abi)
+
+Some people use "stack walking" to refer to obtaining a stack trace, while "stack unwinding" refers to an enhanced operation that also recovers callee-saved registers.
+In this post, we don't make the distinction.
 
 <!-- more -->
 
@@ -37,11 +40,12 @@ This method is not applicable to some instructions in the prologue/epilogue.
 Note: on RISC-V and LoongArch, the stack slot for the previous frame pointer is stored at `fp[-2]` instead of `fp[0]`.
 See [Consider standardising which stack slot fp points to](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/issues/18) for the RISC-V discussion.
 
-The following code works on many architectures:
+The following code works on many architectures. You can enable `-rdynamic` (`g++ a.cc -rdynamic`) to symbolize the global function names.
 ```c
+#include <dlfcn.h>
 #include <stdio.h>
 [[gnu::noinline]] void qux() {
-  void **fp = __builtin_frame_address(0);
+  void **fp = (void **)__builtin_frame_address(0);
   for (;;) {
 #if defined(__riscv) || defined(__loongarch__)
     void **next_fp = fp[-2], *pc = fp[-1];
@@ -49,10 +53,15 @@ The following code works on many architectures:
     void **next_fp = fp[0];
     void *pc = next_fp <= fp ? 0 : next_fp[2];
 #else
-    void **next_fp = *fp, *pc = fp[1];
+    void **next_fp = (void **)*fp, *pc = fp[1];
 #endif
-    printf("%p %p\n", next_fp, pc);
-    if (next_fp <= fp) break;
+    printf("%p %p", next_fp, pc);
+    Dl_info info;
+    if (dladdr(pc, &info) && info.dli_sname)
+      printf(" %s + 0x%tx", info.dli_sname, (char *)pc - (char *)info.dli_saddr);
+    puts("");
+    if (next_fp <= fp)
+      break;
     fp = next_fp;
   }
 }
@@ -113,18 +122,47 @@ On an architecture with relatively sufficient registers, e.g. x86-64, the perfor
 
 ### Compiler behavior
 
-* `-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer`: all functions maintain frame pointers.
-* `-fno-omit-frame-pointer -momit-leaf-frame-pointer`: all non-leaf functions maintain frame pointers. Leaf functions don't maintain frame pointers.
-* `-fomit-frame-pointer`: all functions omit frame pointers. `arm*-apple-darwin` and `thumb*-apple-darwin` don't support the option.
+- Don't maintain FP chain: `-fomit-frame-pointer -momit-leaf-frame-pointer` (smallest overhead)
+  + On some targets FP is not reserved, i.e. FP may be allocated.
+  + On other targets FP is reserved, e.g. Windows AArch64 since Clang 21, AArch32 with `-mframe-chain=aapcs` and `-mframe-chain=aapcs+laf`
+- Maintain FP for non-leaf functions, reserve but don't push/pop FP for leaf functions: `-fno-omit-frame-pointer -momit-leaf-frame-pointer`
+- Maintain FP for all functions: `-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer` (largest overhead)
 
-For `-O0`, most targets default to `-fno-omit-frame-pointer`.
+In many targets supported by Clang, `-O` implies `-fomit-frame-pointer`.
 
-For `-O1` and above, many targets default to `-fomit-frame-pointer` (while Apple and FreeBSD don't).
-Some targets default to `-momit-leaf-frame-pointer`.
-Specify `-fno-omit-leaf-frame-pointer` to get a similar effect to `-O0`.
+For leaf functions (those that don't call other functions), while the frame pointer register should still be reserved for consistency, the push/pop operations are often unnecessary.
+Compilers provide `-momit-leaf-frame-pointer` (with target-specific defaults) to reduce code size.
+
+The viability of this optimization depends on the target architecture:
+
+- On AArch64, the return address is available in the link register (X30). The immediate caller can be retrieved by inspecting X30, so `-momit-leaf-frame-pointer` does not compromise unwinding.
+- On x86-64, after the prologue instructions execute, the return address is stored at RSP plus an offset. An unwinder needs to know the stack frame size to retrieve the return address, or it must utilize DWARF information for the leaf frame and then switch to the FP chain for parent frames.
+
+Beyond this architectural consideration, there are additional practical reasons to use `-momit-leaf-frame-pointer` on x86-64:
+
+- Many hand-written assembly implementations (including numerous glibc functions) don't establish frame pointers, creating gaps in the frame pointer chain anyway.
+- In the prologue sequence `push rbp; mov rbp, rsp`, after the first instruction executes, RBP does not yet reference the current stack frame. When shrink-wrapping optimizations are enabled, the instruction region where RBP still holds the old value becomes larger, increasing the window where the frame pointer is unreliable.
+
+Given these trade-offs, three common configurations have emerged:
+
 
 GCC 8 is known to omit frame pointers if the function does not need a frame record for x86 ([i386: Don't use frame pointer without stack access](https://gcc.gnu.org/git/gitweb.cgi?p=gcc.git;h=8e941ae950ddce1745b4d6819a7131908dd7de24)).
 There is a feature request: [Option to force frame pointer](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=98018).
+
+With GCC's shrink wrapping optimization (which can be disabled with `-fno-shrink-wrap`), `-fno-omit-frame-pointer` does not ensure there is `push rbp; mov rbp, rsp` at the function beginning.
+
+GCC's `-fschedule-insns2` optimization may insert unrelated instructions between `push rbp` and `mov rbp, rsp`. (<https://gcc.gnu.org/PR55667>)
+```cpp
+// GCC reschedule instructions for both aarch64 and x86-64
+int f(int &, float);
+int g(int i, float t) {
+  return f(i, t) + f(i, t);
+}
+```
+
+GCC x86 has [missing optimization with `-fno-omit-frame-pointer`](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=108386).
+
+GCC's s390x port may save link register and FP to floating-point registers in leaf functions.
 
 ## libunwind
 
@@ -174,8 +212,9 @@ Each FDE has an associated CIE. FDE has these fields:
 * initial\_location: The address of the first location described by the FDE. The value is encoded with a relocation referencing a section symbol
 * address\_range: initial\_location and address\_range describe an address range
 * instructions: bytecode for unwinding, essentially (address,opcode) pairs
-* augmentation\_data\_length
-* augmentation\_data: If the associated CIE augmentation contains `L` characters, language-specific data area will be recorded here
+* augmentation\_data\_length: Present if the associated CIE contains augmentation contains `z`
+* augmentation\_data: Present if the associated CIE contains augmentation contains `z`
+  + If the associated CIE augmentation contains `L`, language-specific data area will be recorded here
 * padding
 
 A CIE may optionally refer to a personality routine in the text section (`.cfi_personality` directive).
@@ -396,7 +435,7 @@ The most common directives are:
 
 In a `-DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86` build of clang, `.text` is 51.7MiB, `.eh_frame` is 4.2MiB, `.eh_frame_hdr` is 646B. There are 2 CIE and 82745 FDE.
 
-### Remarks
+### Remarks on DWARF CFI
 
 Some conditional execution states are not expressible with CFI instructions.
 For instance, in the code between `popne {some registers}` and `bne label` below, the registers may or may not be on the stack, and DWARF CFI cannot represent this scenario.
@@ -519,17 +558,18 @@ Note, such a mechanism is not available for range extension thunks (also linker 
 For `--icf`, two text sections may may have identical content and relocations but different LSDA, e.g. the two functions may have catch blocks of different types.
 We cannot merge the two sections. For simplicity, we can [mark all text section referenced by LSDA](https://reviews.llvm.org/D84610) as not eligible for ICF.
 
-## Compact unwind descriptors
+## Compact unwind information
 
-On macOS, Apple designed the compact unwind descriptors mechanism to accelerate unwinding. In theory, this technique can be used to save some space in `__eh_frame`, but it has not been implemented.
-The main idea is:
+Apple designed the compact unwind format for synchronous unwinding, which has been in production use since 2009 with Mac OS X 10.6.
+While there is no formal documentation, you may check out [The Apple Compact Unwinding Format: Documented and Explained](https://faultlore.com/blah/compact-unwinding/).
 
-* The FDE of most functions has a fixed mode (specify CFA at the prologue, store callee-saved registers), and the FDE instructions can be compressed to 32-bit.
-* Personality/lsda described by CIE/FDE augmentation data is very common and can be extracted as a fixed field.
+llvm-project source: `llvm/lib/MC`, `lld/MachO/UnwindInfoSection.cpp`, `libunwind/src/CompactUnwinder.hpp`, `lldb/source/Symbol/CompactUnwindInfo.cpp`
 
-Only 64-bit will be discussed below. A descriptor occupies 32 bytes
+**Compiler output.** LLVM generates "compact unwind group description" records in the `__LD,__compact_unwind` section.
+On arm64 platforms, `__eh_frame` can be omitted from compiler output.
 
 ```asm
+// Compiler output: a single unwind group descriptor in __LD,__compact_unwind
 .quad _foo
 .set L1, Lfoo_end-_foo
 .long L1
@@ -538,14 +578,47 @@ Only 64-bit will be discussed below. A descriptor occupies 32 bytes
 .quad lsda_address
 ```
 
-If you study `.eh_frame_hdr` (binary search index table) and `.ARM.exidx`, you can know that the length field is redundant.
+**Linker processing.** The "compact unwind group description" records are not compact—the 8-byte fields can be compressed further.
+The linker merges group descriptors from input files and builds `__TEXT,__unwind_info` (compact unwind information).
+In a typical executable, the majority of unwind information resides in `__unwind_info`, while `__eh_frame` is extremely small, if present at all.
 
-The Compact unwind descriptor is encoded as:
+The compact unwind format is based on several key principles:
+
+- **Standard prologue/epilogue encoding:** Most functions have regular prologues and epilogues. With some code generation restrictions (e.g., register saving order, no unrelated instructions in the prologue/epilogue), they can be encoded with a 32-bit descriptor. Functions not maintaining the frame pointer chain require more rigid prologue and epilogue instructions. Rare cases that cannot be encoded this way fall back to DWARF CFI.
+- **Two-level page table structure:** This compresses 32-bit descriptors further and enables efficient lookup.
+  + The section header references an arbitrary number of pages. Each page is 4096 bytes and describes several hundred entries.
+  + The page header consists of a common first level header and a regular or compressed second level header.
+  + First level headers are stored consecutively after personality routines. The first level describes: the first address mapped by this page (enabling smaller relative addresses in entries), the offset to the second level header, and the base offset into the LSDA array. Note: a first level header points to a single second level header.
+  + Second level headers are stored within the respective 4096-byte pages. Each header is immediately followed by its entries. (The header field `entryPageOffset` is a constant.)
+  + The compressed second level enables local palettes for common descriptors.
+- **Compressed page entries:** In a page using the compressed second level header, an entry encodes a 24-bit relative instruction address and an 8-bit descriptor index.
+- **Separate LSDA storage:** LSDA entries are stored separately as 8-byte (function_offset, lsda_offset) pairs. This optimizes for the no-LSDA case but is expensive when more than 50% entries need LSDA. [A quick estimate](https://discourse.llvm.org/t/rfc-improving-compact-x86-64-compact-unwind-descriptors/47471/20) shows that the current approach is beneficial.
+
+**Compact unwind descriptor.** This is referred to as "encoding" in `libunwind/include/mach-o/compact_unwind_encoding.h`.
+"The Apple Compact Unwinding Format: Documented and Explained" calls it "opcode".
+
+- `unwind_info_section_header::commonEncodingsArraySectionOffset` points to a global palette containing commonly-used compact unwind descriptors.
+- Regular pages store compact unwind descriptors directly alongside entry addresses.
+- Compressed pages use local palettes to store compact unwind descriptors more efficiently.
+
+**Descriptor encoding.** The compact unwind descriptor in `__TEXT,__unwind_info` is encoded as:
 ```c
-uint32_t : 24; // vary with different modes
-uint32_t mode : 4;
-uint32_t flags : 4;
+uint32_t mode_specific_encoding : 24; // vary with different modes
+
+uint32_t mode : 4; // UNWIND_X86_64_MODE_MASK == UNWIND_ARM64_MODE_MASK
+
+uint32_t has_lsda : 1;
+uint32_t personality_index : 2;
+uint32_t is_not_function_start : 1;
 ```
+
+Personality routines are encoded as a 2-bit index, where index 0 indicates no personality. Only 3 entries are reserved for personality routines, with C++ and ObjC taking 2 of them.
+Since 2023, LLVM [uses DWARF fallback by default for non-canonical personality routines](https://github.com/llvm/llvm-project/commit/e60b30d5e3878e7d91f8872ec4c4dca00d4a2dfc).
+
+In `.gcc_except_table`, call site offsets and landing pad offsets are relative to the `.cfi_lsda` directive location, usually the function start address.
+When a function has multiple compact unwind descriptors and use a single `.cfi_lsda` directive, and the Itanium C++ ABI Level 1 unwinder finds a descriptor that is not the first, it needs to scan backwards to find the function start address.
+
+### x86-64 modes
 
 Five modes are defined:
 
@@ -555,64 +628,180 @@ Five modes are defined:
 * 3: large SP-based frame: frame pointer is not used, the frame size is fixed at compile time but the value is large and cannot be represented by mode 2
 * 4: DWARF CFI escape
 
-### FP-based frame (`UNWIND_MODE_BP_FRAME`)
+**FP-based frame (`UNWIND_X86_64_MODE_RBP_FRAME`)**
 
-The compact unwind encoding is:
+The mode-specific encoding is:
 ```c
-uint32_t regs : 15;
+uint32_t regs : 15; // Up to 5 saved registers
 uint32_t : 1; // 0
-uint32_t stack_adjust : 8;
-uint32_t mode : 4;
-uint32_t flags : 4;
+uint32_t frame_offset : 8; // First saved register is at [RBP-8*frame_offset]
 ```
 
-The callee-saved registers on x86-64 are: RBX, R12, R13, R14, R15, RBP. 3 bits can encode a register, 15 bits are enough to represent 5 registers except RBP (whether to save and where).
-stack\_adjust records the extra stack space outside the save register.
+The callee-saved registers on x86-64 are: RBX, R12, R13, R14, R15, RBP, where RBP does not need to be saved again.
+3 bits can encode a register and 15 bits can encode a sequence of 5 registers.
 
-### SP-based frame (`UNWIND_MODE_STACK_IMMD`)
+**SP-based frame, immediate (`UNWIND_X86_64_MODE_STACK_IMMD`)**
 
-The compact unwind encoding is:
+The mode-specific encoding is:
 ```c
 uint32_t reg_permutation : 10;
 uint32_t cnt : 3;
 uint32_t : 3;
 uint32_t size : 8;
-uint32_t mode : 4;
-uint32_t flags : 4;
 ```
 
 cnt represents the number of saved registers (maximum 6).
 reg\_permutation indicates the sequence number of the saved register.
 size\*8 represents the stack frame size.
 
-### Large SP-based frame (`UNWIND_MODE_STACK_IND`)
+**SP-based frame, indirect (`UNWIND_X86_64_MODE_STACK_IND`)**
 
-Compact unwind descriptor編碼爲：
+The mode-specific encoding is:
 ```c
 uint32_t reg_permutation : 10;
 uint32_t cnt : 3;
 uint32_t adj : 3;
 uint32_t size_offset : 8;
-uint32_t mode : 4;
-uint32_t flags : 4;
 ```
 
 Similar to SP-based frame. In particular: the stack frame size is read from the text section. The RSP adjustment is usually represented by `subq imm, %rsp`, and size\_offset is used to represent the distance from the instruction to the beginning of the function.
 The actual stack size also includes adj\*8.
 
-### DWARF CFI escape
+**DWARF CFI escape (`UNWIND_X86_64_MODE_DWARF`)**
 
 If for various reasons, the compact unwind descriptor cannot be expressed, it must fall back to DWARF CFI.
 
+### ARM64 modes
 
-In the LLVM implementation, each function is represented by only a compact unwind descriptor. If asynchronous stack unwinding occurs in epilogue, existing implementations cannot distinguish it from stack unwinding in function body.
-Canonical Frame Address will be calculated incorrectly, and the caller-saved register will be read incorrectly.
-If it happens in prologue, and the prologue has other instructions outside the push register and `subq imm, $rsp`, an error will occur.
-In addition, if shrink wrapping is enabled for a function, prologue may not be at the beginning of the function. The asynchronous stack unwinding from the beginning to the prologue also fails.
-It seems that most people don't care about this issue. It may be because the profiler loses a few percentage points of the profile.
+**SP-based frame (`UNWIND_ARM64_FRAMELESS`)**
+
+**DWARF CFI escape (`UNWIND_ARM64_MODE_DWARF`)**
+
+**FP-based frame (`UNWIND_ARM64_FRAME`)**
+
+### Lack of asynchronous stack walking support
+
+In the current LLVM implementation, each function is represented by only a compact unwind descriptor.
+
+For a stack walking request in the prologue of an RSP-based frame, the tracer can use the PC offset and the saved registers to infer the canonical frame address. However, this fails if unrelated instructions appear in the prologue. LLVM ensures that no such unrelated instructions are present.
+
+When shrink wrapping is enabled, the prologue may not be at the beginning of the function. Since the current descriptor does not describe the prologue offset, unwinding cannot be performed correctly in this case.
+
+Similarly, if an asynchronous stack walking request occurs in an epilogue that is not at the end of the function (due to tail duplication optimization), the SP adjustment is not described, leading to incorrect canonical frame address computation. Currently, tail duplication skips CFI instructions (see <https://reviews.llvm.org/D40979>).
+
+FP-based frames have fewer such problems. Apple's arm64 platforms require frame pointers, which inherently avoid many of these issues.
+
+Overall, this limitation appears to receive little attention, likely because profilers only lose a small percentage of profile accuracy.
+
+### Asynchronous unwinding extension
 
 In fact, if you use multiple descriptors to describe each area of a function, you can still unwind accurately.
-OpenVMS proposed [[RFC] Improving compact x86-64 compact unwind descriptors](http://lists.llvm.org/pipermail/llvm-dev/2018-January/120741.html) in 2018, but unfortunately there is no relevant implementation.
+OpenVMS's x86-64 port, which is ELF-based, also adopted this format as documented in their "VSI OpenVMS Calling Standard" and their 2018 post: [[RFC] Improving compact x86-64 compact unwind descriptors](https://lists.llvm.org/pipermail/llvm-dev/2018-January/120741.htm)
+Unfortunately, they don't open source the implementation.
+
+This approach makes reasonable assumptions:
+
+- Any use of preserved registers must be delayed until all preserved registers have been saved.
+- In a function with an RBP-based frame, the prologue must have adjacent `push rbp; mov rbp, rsp` instructions, and the epilogue must have adjacent `mov rsp, rbp; pop rbp` instructions.
+- For shrink wrap optimization with a personality routine, instructions that might cause exceptions (floating point exceptions and access violations) cannot be moved into the prologue.
+
+It then repurposes the `length` field:
+
+- A single unwind group describes a (prologue_start_offset, prologue_size, epilogue_is_present) tuple.
+  + 2025 discussions suggest that `epilogue_is_present` should be replaced with `epilogue_end`, the gap size between the end of the register-store sequence and the next descriptor start.
+- The prologue is conceptually split into two parts: the first part extends up to and including the instruction that decreases RSP; the second part extends to a point after the last preserved register is saved but before any preserved register is modified (this location is not unique, providing flexibility).
+  + When unwinding in the prologue, the RSP register value can be inferred from the PC and the set of saved registers.
+- Since register restoration is idempotent (restoring preserved registers multiple times during unwinding causes no harm), there is no need to describe `pop $reg` sequences. The unwind group just need one bit to describe whether the 1-byte `ret` instruction is present.
+- The `length` field in the compact unwind group descriptor is repurposed to describe the prologue's two parts.
+- By composing multiple unwind groups, potentially with zero-sized prologues or omitting `ret` instructions in epilogues, it can describe functions with shrink wrapping or tail duplication optimization.
+- Null frame group (with no prologue or epilogue) is the default and can be used to describe trampolines and PLT stubs.
+
+The proposal isn't clear how to encode a function in `-ffunction-sections` builds. Using two unwind groups for a single function would be too expensive.
+
+```
+f0:
+  ...
+  ret
+
+  .p2align 4
+f1:
+  ...
+  ret
+```
+
+**Next-generation compact unwind information**
+
+aengelke suggests in [a discourse discussion](https://discourse.llvm.org/t/rfc-improving-compact-x86-64-compact-unwind-descriptors/47471/11?u=maskray) enlarging the mode-specific encoding from 24 bits to 32 bits.
+Combined with prologue start, epilogue end, personality, and mode fields, this creates a 64-bit compact unwind descriptor.
+
+We can update `.eh_frame_hdr` to use a 12-byte structure to encode both the 32-bit address and the 64-bit compact unwind descriptor.
+The compact unwind descriptor supports DWARF CFI escape via a special `mode`, allowing `.eh_frame` FDEs that are replaced with compact unwind descriptors to be eliminated.
+
+An optional page table can remove the 32-bit address limitation and enable deduplication of compact unwind descriptors.
+
+```cpp
+struct CompactUnwindDescriptor {
+  uint64_t reserved : 11;
+  // Offset of prologue start into function; -1 implies no prologue.
+  // The linker can fold NULL descriptors into non-(-1) prologue_start.
+  uint64_t prologue_start : 7;
+  // Number of bytes after the end of the register-restore sequence
+  // before the beginning of the next descriptor.
+  uint64_t epilogue_end : 6;
+  // Index into personality function table. 0 implies no personality.
+  uint64_t personality_fn : 4;
+  // Descriptor mode. 0 means a null frame. 1 means DWARF CFI escape.
+  // Other values are arch-specific.
+  uint64_t mode : 4;
+
+  // Architecture and mode-specific encoding.
+  uint32_t mode_specific_encoding;
+};
+
+// RBP-based frame
+  /// Size of the prologue, marks the point where all CSRs are saved.
+  uint64_t prologue_size : 8;
+  /// Saved registers. Details to be discussed. A simple format would be
+  /// one bit in the sequence rbp,r15,r14,r13,r12,rbx, indicating whether
+  /// it is saved (that'd require just 6 bits).
+  uint64_t saved_regs : 24;
+
+// RSP-based frame
+  /// Size of the stack frame * 16 (ABI requires 16B alignment).
+  /// There is no need for a large frame mode, this currently covers
+  /// 16 MiB, which should be enough. (Compilers can use the RBP mode
+  /// or DWARF if they require larger stack frames.)
+  uint64_t frame_size : 20;
+  /// TBD: Specification of alternative push/pop sequence for APX.
+  uint64_t is_apx : 1;
+  /// TBD: Specification of instruction sequence for -fstack-clash-protection
+  uint64_t with_scp : 1;
+  /// TBD: I'm sure I forgot things we might need to handle.
+  uint64_t reserved : 2;
+  /// One bit in the sequence rbp,r15,r14,r13,r12,rbx, indicating whether
+  /// it is saved (that'd require just 6 bits). I.e., the first saved reg
+  /// of this list is at [CFA-16], the second at [CFA-24], etc.
+  /// Maybe we need more options for IPRA, I'm unsure, so I added two
+  /// unused bits for now.
+  uint64_t saved_regs : 8;
+```
+
+**RISC-V**
+
+`-msave-restore` may generate library calls to save and restore non-volatile registers in prologue and epilogue code.
+A compact unwind implementation needs to account for it.
+
+The Zcmp extension (primarily targeting embedded class CPUs) provides instruction to save and restore ra and s{0-11}.
+However, the register save order is [incompatible with `-fno-omit-frame-pointer`](https://github.com/riscvarchive/riscv-code-size-reduction/issues/194).
+Xqccmp is a variant of Zcmp that is compatible with `-fno-omit-frame-pointer`.
+
+
+GCC and Clang generate multiple `addi sp, sp, imm` instructions to adjust the stack pointer.
+This makes it challenging to support asynchronous compact unwind information.
+```c
+void bar(int *);
+void foo() { int x[1101]; bar(x); }
+```
 
 ## ARM exception handling
 
@@ -657,6 +846,16 @@ uint8_t lsda[];       // variable length
 
 In construction.
 
+## Windows x86-64 exception handling
+
+<https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64?view=msvc-170>
+
+`MSVC /d2epilogunwind` enables Windows x64 Unwind V2 information.
+
+See also `llvm/lib/Target/X86/X86WinEHUnwindV2.cpp`
+If there is a `.seh_endepilogue`, add a `.seh_unwindv2start` before the first in-epilogue POP, or `seh_endepilogue` if there is no such POP.
+This directive emits a `UOP_Epilog` code.
+
 ## Windows ARM64 exception handling
 
 Update: [Windows ARM64 Frame Unwind Code Details](https://www.corsix.org/content/windows-arm64-unwind-codes)
@@ -695,7 +894,9 @@ In construction.
 
 For x86-64, the Linux kernel uses its own unwind tables: ORC. You can find its documentation on <https://www.kernel.org/doc/html/latest/x86/orc-unwinder.html> and there is an lwn.net introduction [The ORCs are coming](https://lwn.net/Articles/728339/).
 
-`objtool orc generate a.o` parses `.eh_frame` and generates `.orc_unwind` and `.orc_unwind_ip`. For an object file assembled from:
+objtool decodes instructions and analyzes call frame information.
+When `--orc` is specified (e.g. `tools/objcopy/objtool --orc --link vmlinux.o`), objtool generates `.orc_header`, `.orc_unwind`, and `.orc_unwind_ip`.
+For an object file assembled from:
 ```asm
 .globl foo
 .type foo, @function
@@ -741,8 +942,8 @@ To unwind a stack frame, `unwind_next_frame`
 
 ## SFrame
 
-The `.sframe` format is a lightweight alternative to `.eh_frame` and `.eh_frame_hdr`.
-By trading some functionality and flexibility for compactness, SFrame achieves significantly smaller size while maintaining the essential unwinding capabilities needed by profilers.
+SFrame is a new format for stack walking, suitable for profilers.
+It sacrifices functionality (e.g. personality, LSDA, callee-saved registers), and its stack offsets are less compact than `.eh_frame`'s bytecode-style CFI instructions.
 
 Please check out [Remarks on SFrame](/blog/2025-09-28-remarks-on-sframe).
 
@@ -772,4 +973,4 @@ We have at least 3 routes:
 * mainly FP-based. People don't use FP due to performance loss. If `-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer` doesn't hurt performance that much, it may be better than some information in `.eh_frame`. We can use unwind information to fill the gap, e.g. for shrink wrapping.
 
 Unwind information is difficult to have 100% coverage.
-Linker generated code (PLT and range extension thunks) generally does not have unwind informatioin coverage.
+Linker generated code (PLT and range extension thunks) generally does not have unwind information coverage.

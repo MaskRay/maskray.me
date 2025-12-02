@@ -18,8 +18,36 @@ In this post, we don't make the distinction.
 
 Stack unwinding tasks can be divided into two categories:
 
-* synchronous: triggered by the program itself, C++ throw, get its own stack trace, etc. This type of stack unwinding only occurs at the function call (in the function body, it will not appear in the prologue/epilogue)
-* asynchronous: triggered by a garbage collector, signals or an external program, this kind of stack unwinding can happen in function prologue/epilogue
+- synchronous: triggered by the program itself, C++ throw, get its own stack trace, etc. This type of stack unwinding only occurs at the function call (in the function body, it will not appear in the prologue/epilogue)
+- asynchronous: triggered by a garbage collector, signals or an external program, this kind of stack unwinding can happen in function prologue/epilogue
+
+Note, GCC supports `-fnon-call-exceptions`, but its behavior is unclear. ([PR70387](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=70387))
+The feature seems used heavily by the defunct GNU Compiler for Java.
+
+```
+% cat a.cc
+#include <stdio.h>
+void nop() {}
+int main() {
+  int i = 0;
+  int* volatile p = &i;
+  try {
+    nop();
+    printf("%d\n", 1 / *p);
+    nop();
+  } catch (...) { puts("oops"); }
+}
+% g++ a.cc -o a -fnon-call-exceptions -fasynchronous-unwind-tables
+% ./a
+[1]    16959 floating point exception (core dumped)  ./a
+```
+
+## Mechanisms
+
+- Frame pointers
+- DWARF `.eh_frame`
+- Other unwind formats
+- Hardware-assisted stack walking features
 
 ## Frame pointer
 
@@ -188,7 +216,7 @@ Compiler/assembler/linker/libunwind provides corresponding support.
 
 * length: The size of the length field plus the value of length must be an integral multiple of the address size.
 * CIE\_id: Constant 0. This field is used to distinguish a CIE and a FDE. In a FDE, this field is non-zero, representing CIE\_pointer
-* version: Constant 1
+* version: Constant 1 (or 3 for GAS's riscv port).
 * augmentation: A NUL-terminated string describing the CIE/FDE parameter list.
   + `z`: augmentation\_data\_length and augmentation\_data fields are present and provide arguments to interpret the remaining bytes
   + `P`: retrieve one byte (encoding) and a value (length decided by the encoding) from augmentation\_data to indicate the personality routine pointer
@@ -197,13 +225,16 @@ Compiler/assembler/linker/libunwind provides corresponding support.
   + `S`: an associated FDE describes a signal frame (used by `unw_is_signal_frame`)
 * code\_alignment\_factor: Assuming that the instruction length is a multiple of 2 or 4 (for RISC), it affects the multiplier of parameters such as `DW_CFA_advance_loc`
 * data\_alignment\_factor: The multiplier that affects parameters such as `DW_CFA_offset DW_CFA_val_offset`
-* return\_address\_register
+* return\_address\_register: This is changed from a byte to a ULEB128 in CIE version 3+.
 * augmentation\_data\_length: only present if augmentation contains `z`.
 * augmentation\_data: only present if augmentation contains `z`. This field provides arguments describing augmentation. For `P`, the argument specifies the personality (1-byte encoding and the encoded pointer). For `R`, the argument specifies the encoding of FDE initial\_location.
 * initial\_instructions: bytecode for unwinding, a common prefix used by all FDEs using this CIE
 * padding
 
-In `.debug_frame` version 4 or above, address\_size (4 or 8) and segment\_selector\_size are present. `.eh_frame` does not have the two fields.
+In `.debug_frame` version 4 or above, address\_size (4 or 8) and segment\_selector\_size are present. `.eh_frame` of CIE version 1 does not have the two fields.
+(GAS since 2019 supports `--gdwarf-cie-version={1,3,4}` to set the CIE version.
+The riscv port defaults to version 3 to return\_address\_register to use register number >= 256.
+Version 4 additionally adds segment\_selector\_size, which is not useful.)
 
 Each FDE has an associated CIE. FDE has these fields:
 
@@ -211,11 +242,11 @@ Each FDE has an associated CIE. FDE has these fields:
 * CIE\_pointer: Subtract CIE\_pointer from the current position to get the associated CIE
 * initial\_location: The address of the first location described by the FDE. The value is encoded with a relocation referencing a section symbol
 * address\_range: initial\_location and address\_range describe an address range
-* instructions: bytecode for unwinding, essentially (address,opcode) pairs
 * augmentation\_data\_length: Present if the associated CIE contains augmentation contains `z`
 * augmentation\_data: Present if the associated CIE contains augmentation contains `z`
   + If the associated CIE augmentation contains `L`, language-specific data area will be recorded here
-* padding
+* instructions: bytecode for unwinding, essentially (address,opcode) pairs
+* padding: Enough `DW_CFA_nop` instructions (zeros) to make the size match the `length` field. For 64-bit objects, the last FDE is aligned by 8 bytes while other FDEs are aligned by 4.
 
 A CIE may optionally refer to a personality routine in the text section (`.cfi_personality` directive).
 A FDE may optionally refer to its associated LSDA in `.gcc_except_table` (`.cfi_lsda` directive).
@@ -257,6 +288,7 @@ type EhFrameEntry = union {
 };
 ```
 
+
 ### `.eh_frame` vs `.debug_frame`
 
 Some target default to `-fasynchronous-unwind-tables` while some default to `-fno-asynchronous-unwind-tables`.
@@ -275,9 +307,10 @@ Compiler options                                  Produced section
 * `.eh_frame` has the flag of `SHF_ALLOC` (indicating that a section should be part of the process image) but `.debug_frame` does not, so the latter has very few usage scenarios.
 * `.debug_frame` supports DWARF64 format (supports 64-bit offsets but the volume will be slightly larger) but `.eh_frame` does not support (in fact, it can be expanded, but lacks demand)
 * In the CIE of `.debug_frame`, augmentation instead of augmentation\_data\_length and augmentation\_data is used.
+* DWARFv5 doesn't mention augmentation in the FDE of `.debug_frame`.
 * The version field in CIEs is different.
 * The meaning of CIE\_pointer in FDEs is different. `.debug_frame` indicates a section offset (absolute) and `.eh_frame` indicates a relative offset. This change made by `.eh_frame` is great. If the length of `.eh_frame` exceeds 32-bit, `.debug_frame` has to be converted to DWARF64 to represent CIE\_pointer, and relative offset does not need to worry about this issue (if the distance between FDE and CIE exceeds 32-bit, add a CIE OK)
-* In `.eh_frame`, augmentation typically includes `R` and the FDE encoding is `DW_EH_PE_pcrel|DW_EH_PE_sdata4` for small code models of AArch64/PowerPC64/x86-64. initial\_location has 4 bytes in GCC (even if `-mcmodel=large`). In `.debug_frame`, 64-bit architectures need 8-byte initial\_location. Therefore, `.eh_frame` is usually smaller than an equivalent `.debug_frame`
+* In `.eh_frame`, augmentation always includes `zR` and the FDE encoding is typically `DW_EH_PE_pcrel|DW_EH_PE_sdata4` for small code models of AArch64/PowerPC64/x86-64. initial\_location has 4 bytes in GCC (even if `-mcmodel=large`). In `.debug_frame`, 64-bit architectures need 8-byte initial\_location. Therefore, `.eh_frame` is usually smaller than an equivalent `.debug_frame`
 
 For two otherwise equivalent relocatable object files, one using `.debug_frame` while the other using `.eh_frame`, `size(.debug_frame)+size(.rela.debug_frame)` > `size(.eh_frame)+size(.rela.eh_frame)`, perhaps larger by ~20%.
 If we compress `.debug_frame` (`.eh_frame` cannot be compressed), `size(compressed .debug_frame)+size(.rela.debug_frame) < size(.eh_frame)+size(.rela.eh_frame)`.
@@ -566,7 +599,7 @@ While there is no formal documentation, you may check out [The Apple Compact Unw
 llvm-project source: `llvm/lib/MC`, `lld/MachO/UnwindInfoSection.cpp`, `libunwind/src/CompactUnwinder.hpp`, `lldb/source/Symbol/CompactUnwindInfo.cpp`
 
 **Compiler output.** LLVM generates "compact unwind group description" records in the `__LD,__compact_unwind` section.
-On arm64 platforms, `__eh_frame` can be omitted from compiler output.
+On arm64 platforms, `__eh_frame` can be omitted from compiler output. ([D12258 and OmitDwarfIfHaveCompactUnwind](https://reviews.llvm.org/D122258))
 
 ```asm
 // Compiler output: a single unwind group descriptor in __LD,__compact_unwind
@@ -786,6 +819,38 @@ struct CompactUnwindDescriptor {
   uint64_t saved_regs : 8;
 ```
 
+In Nov 2025, I created a branch that ports compact unwind informtion to ELF as a baseline.
+<https://github.com/MaskRay/llvm-project/tree/demo-unwind>
+
+Current `.eh_frame_hdr` format (TODO needing overhaul)
+
+```
+uint32_t version; // 2
+uint32_t eh_frame_ptr_enc; // DW_EH_PE_pcrel | DW_EH_PE_sdata4
+uint32_t fde_count_enc; // DW_EH_PE_udata4
+uint32_t table_enc; // DW_EH_PE_datarel | DW_EH_PE_sdata8
+uint32_t eh_frame_ptr; // offset to .eh_frame
+uint32_t fde_count;
+
+struct { uint32_t pc_ptr; uint64_t unwind_desc_or_fde_ptr; } entries[];
+// TODO struct { uint32_t pc_ptr; uint32_t lsda_ptr; } lsda[];
+```
+
+**AArch64**
+
+<https://www.codalogic.com/blog/2022/10/20/Aarch64-Stack-Frames-Again> demonstrates different stack frames generated by GCC and Clang using the following example:
+
+```cpp
+#include <string>
+#include <iostream>
+
+std::string merge( std::string a, std::string b, std::string c ) {
+    std::string d = a + b;
+    std::string e = a + d + b;
+    return d + e;
+}
+```
+
 **RISC-V**
 
 `-msave-restore` may generate library calls to save and restore non-volatile registers in prologue and epilogue code.
@@ -888,7 +953,43 @@ uint32_t FrameSize : 9;
 
 ## MIPS compact exception tables
 
-In construction.
+The specification is available at <https://github.com/itanium-cxx-abi/cxx-abi/blob/main/MIPSCompactEH.pdf>.
+
+Binutils [added support](https://sourceware.org/cgit/binutils-gdb/commit/?id=2f0c68f23bb3132cd5ac466ca8775c0d9e4960cd) in 2015, though the [GCC patch](https://inbox.sourceware.org/gcc-patches/FD3DCEAC5B03E9408544A1E416F112420192C8DEFB@NA-MBX-04.mgc.mentorg.com/) remains unmerged.
+
+The following is based on my understanding of this format.
+
+**Compiler output.** The directive `.cfi_sections .eh_frame_entry` instructs the assembler to emit index table entries to the `.eh_frame_entry` section.
+Then, `.cfi_fde_data` and `.cfi_inline_lsda` directives can be used.
+[`.cfi_fde_data opcode1, ...`](https://sourceware.org/binutils/docs/as/CFI-directives.html) betweens a pair of `.cfi_startproc` and `.cfi_endproc` describes the frame unwind opcodes where each opcode takes one byte.
+The frame unwind opcodes describes the semantics of prologue instructions, similar to Windows ARM64 Frame Unwind Codes.
+
+**Assembler processing.** The assembler generates a `.eh_frame_entry.*` section for each section with compact unwind information.
+Each `.eh_frame_entry` is a pair of 4 bytes, where the first word is like the first word in a `.eh_frame_hdr` entry.
+An `.eh_frame_entry` entry takes one of three forms:
+
+- Inline compact: `(even pc, unwind_data)`. This form can be used when there are at most 3 opcodes (3 bytes) and no personality routine.
+- Out-of-line compact: `(odd pc, even unwind_ptr)` where `unwind_ptr` points to unwind data in the `.gnu_extab` section.
+- Legacy: `(odd pc, odd legacy_unwind_ptr)` where `legacy_unwind_ptr` points to the legacy `.eh_frame` section.
+
+TODO: Describe `.cfi_inline_lsda`, which appears related to `__gnu_compact_pr[1-3]`.
+
+**Linker processing.** GNU ld concatenates `.eh_frame_entry` and `.eh_frame_entry.*` sections, sorting them by address.
+The following internal linker script fragment adds a header before the entries:
+
+```
+.eh_frame_hdr   : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) }
+```
+
+Although the section name remains the traditional `.eh_frame_hdr`, the version is set to 2.
+`.eh_frame_hdr` is covered by the traditional `PT_GNU_EH_FRAME` program header.
+The linker also defines the symbol `__GNU_EH_FRAME_HDR` to hold the `.eh_frame_hdr` address.
+
+TODO: Describe LSDA representation, which is more compact than the traditional `.gcc_except_table` section.
+
+While the current implementation seems synchronous only, extending it to asynchronous unwinding is natural.
+<https://inbox.sourceware.org/gcc-patches/55F0C4D5.6080507@redhat.com/> suggests that opcodes can be introduced to describe `DW_CFA_remember_state`/`DW_CFA_restore_state`.
+TODO: This might be similar to `END_C` in Windows ARM64 for zero-length prologs that still have unwind state.
 
 ## Linux kernel ORC unwind tables
 
@@ -942,8 +1043,9 @@ To unwind a stack frame, `unwind_next_frame`
 
 ## SFrame
 
-SFrame is a new format for stack walking, suitable for profilers.
-It sacrifices functionality (e.g. personality, LSDA, callee-saved registers), and its stack offsets are less compact than `.eh_frame`'s bytecode-style CFI instructions.
+SFrame is a stack walking format extended from ORC unwind tables. The proposed scenario is for profilers.
+However, it sacrifices functionality (e.g. personality, LSDA, callee-saved registers), unsuitable for C++ exceptions.
+In addition, its stack offsets are less compact than `.eh_frame`'s bytecode-style CFI instructions.
 
 Please check out [Remarks on SFrame](/blog/2025-09-28-remarks-on-sframe).
 

@@ -977,6 +977,12 @@ Design thoughts:
 
 It uses compact unwind descriptors similar to ARM EH. Builtin PR1 means there is no language-dependent data, Builtin PR2 is used for C/C++
 
+## AIX
+
+AIX does not support the `.eh_frame` section.
+Instead, each function is followed by the traceback table for stack unwinding.
+See <https://reviews.llvm.org/D100132> for the LLVM libunwind implementation.
+
 ## Misc
 
 Khalil Estell's CppCon 2024 talk _C++ Exceptions for Smaller Firmware_ mentions that a custom exception implementation that drops some rare functionality can make the library code size mush smaller, suitable for firmware development.

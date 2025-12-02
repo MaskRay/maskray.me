@@ -486,6 +486,12 @@ Regarding `x: call ext; y: .if y-x == 8` for RISC-V, `y-x` is folded to 8 even i
 `config/tc-riscv.c` defines `TC_FORCE_RELOCATION_SUB_SAME(seg)` as: seg is a special section (one of `absolute_section, undefined_section, reg_section, expr_section`) or seg contains code (possibly linker relaxable).
 As a result, `.long y-x` results in ADD/SUB relocations if x and y are defined in the same text section, even if they are not separated by a linker-relaxable instruction.
 
+In July 2025, `.errif` and `.warnif` are introduced to utilize `deferred_expression` to emit diagnostics after fragment offsets are assigned.
+
+### `.eh_frame` generation
+
+`gas/dw2gencfi.c` generates the `.eh_frame` section from call-frame information directives.
+
 ## Notes on LLVM assembly and machine code emission
 
 Clang has the capability to output either assembly code or an object file. Generating an object file directly without involving an assembler is referred to as "direct object emission."

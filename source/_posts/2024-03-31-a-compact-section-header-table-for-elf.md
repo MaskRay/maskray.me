@@ -56,6 +56,9 @@ The remainder of this article presents a formal specification suitable for inclu
 
 ## Proposal for the ELF specification
 
+- [generic-abi proposal](https://groups.google.com/g/generic-abi/c/9DPPniRXFa8)
+- [LLVM proposal](https://discourse.llvm.org/t/compact-section-header-table-for-elf/88821)
+
 ### Specification Modifications
 
 In _Chapter 2, ELF Header_, section _Contents of the ELF Header_, modify the description of `e_shentsize`:
@@ -303,12 +306,13 @@ content
 
 ### DWARF-style Abbreviation Tables
 
-Inspired by DWARF's `.debug_abbrev`, this approach would define a small set of section "shapes" with predefined field layouts (e.g., a shape for typical `SHT_PROGBITS` sections), and each header would reference a shape and fill in only the varying fields.
+Inspired by DWARF's `.debug_abbrev`, this approach defines a small set of section "shapes" with predefined field layouts (e.g., a shape for typical `SHT_PROGBITS` sections). Each section header references a shape and fills in only the varying fields.
 
-While this could achieve better compression for files with many similar sections, it adds complexity with an additional indirection layer and abbreviation table.
+While this could achieve better compression for files with many similar sections, it adds complexity through an additional indirection layer and abbreviation table.
 
 ```
 struct Csht_Template {
+  uint8_t presence;       // presence of sh_addr/sh_size/sh_link/sh_info/sh_addralign
   varint sh_type;         // SHT_PROGBITS, SHT_NOBITS, etc.
   varint sh_flags;        // Compressed common flags
   varint sh_addralign_log2; // log2(alignment)
@@ -316,17 +320,65 @@ struct Csht_Template {
 };
 
 struct Csht_Entry {
-  uint8_t template_id : 7; // Which template
-  uint8_t has_overrides : 1;
+  uint8_t template_id; // Which template
   
   varint sh_name;
   varint sh_offset;
   varint sh_size;
   
-  // Optional overrides (only if has_overrides = 1), indicating which fields follow
-  uint8_t  override_mask;
-  // ... variable override data
+  // Optional sh_addr/sh_size/sh_link/sh_info/sh_addralign
 };
+```
+
+I've written a Ruby program to estimate the size when enabling this optimization.
+
+```ruby
+  abbrev_table_size = cleb128_size(templates.size)
+  templates.keys.each do |sig|
+    sh_type, sh_flags, sh_addralign, sh_entsize = sig
+
+    abbrev_table_size += 1 # presence of sh_addr/sh_size/sh_link/sh_info/sh_addralign
+    abbrev_table_size += cleb128_size(sh_type)
+    abbrev_table_size += cleb128_size(sh_flags)
+    abbrev_table_size += 1 if sh_addralign > 1 # sh_addralign
+    abbrev_table_size += cleb128_size(sh_entsize)
+  end
+
+  # Calculate total section entries size
+  total_entries_size = 0
+  section_headers.each do |shdr|
+    # 1 byte for template_id
+    entry_size = 1
+
+    # Always present: sh_name and sh_offset
+    entry_size += cleb128_size(shdr[:sh_name]) + cleb128_size(shdr[:sh_offset])
+
+    # Variable fields not in template: sh_addr, sh_size, sh_link, sh_info
+    entry_size += cleb128_size(shdr[:sh_addr]) if shdr[:sh_addr] != 0
+    entry_size += cleb128_size(shdr[:sh_size]) if shdr[:sh_size] != 0
+    entry_size += cleb128_size(shdr[:sh_link]) if shdr[:sh_link] != 0
+    entry_size += cleb128_size(shdr[:sh_info]) if shdr[:sh_info] != 0
+
+    total_entries_size += entry_size
+  end
+
+  abbrev_table_size + total_entries_size
+```
+
+When applied to a `-fno-unique-section-names --start-no-unused-arguments -Wa,--crel,--allow-experimental-crel --end-no-unused-arguments` build of `llvm-mc` and `opt`, the section header table is 71.6% as large as the one without this optimization.
+However, this modest improvement doesn't justify the added complexity.
+
+```
+% ruby ~/Dev/object-file-size-analyzer/shdr_abbrev.rb /tmp/out/s2-custom-crel
+Files: 1811
+Total uncompressed: 20767104 bytes (17.9%)
+Total compressed (zstd): 2024585 bytes (2.1%)
+Total compressed (xz): 1719648 bytes (1.8%)
+Total (compressed + 24): 2068049 bytes (2.1%)
+Total (compressed + 64 + 24): 2183953 bytes (2.2%)
+Total cshdr: 4282269 bytes (4.3%)
+Total cshdr-abbrev: 3066326 bytes (3.1%)
+Total file size: 115876616 bytes
 ```
 
 ### Mach-O `.subsections_via_symbols`

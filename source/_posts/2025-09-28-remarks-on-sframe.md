@@ -5,8 +5,7 @@ author: MaskRay
 tags: [linker,sframe]
 ---
 
-SFrame is a new format for [stack walking, suitable for profilers](/blog/2020-11-08-stack-unwinding).
-It intends to replace Linux's in-kernel [ORC unwind format](https://docs.kernel.org/arch/x86/orc-unwinder.html) and serve as an alternative to `.eh_frame` and `.eh_frame_hdr` for userspace programs.
+SFrame is a new [stack walking format](/blog/2020-11-08-stack-unwinding) for userspace profiling, inspired by Linux's in-kernel [ORC unwind format](https://docs.kernel.org/arch/x86/orc-unwinder.html).
 While SFrame eliminates some `.eh_frame` CIE/FDE overhead, it sacrifices functionality (e.g., personality, LSDA, callee-saved registers) and flexibility, and its stack offsets are less compact than `.eh_frame`'s bytecode-style CFI instructions.
 In llvm-project executables I've tested on x86-64, `.sframe` section is 20% larger than `.eh_frame`.
 It also remains significantly larger than highly compact schemes like [Windows ARM64 unwind codes](https://www.corsix.org/content/windows-arm64-unwind-codes).
@@ -149,6 +148,16 @@ In leaf functions GCC might save the return address and FP to floating-point reg
 
 The format uses 0 (an invalid SFrame RA offset from CFA value) to indicate that the return address is not saved, while FP is saved.
 
+## Toolchain implementation
+
+In the GNU toolchain, the assembler in GNU Binutils reinterprets CFI directives and generates the `.sframe` section, while GCC itself has no knowledge of SFrame.
+
+Some scenarios that cannot be described by `.eh_frame` in the absence of the frame pointer are equally inexpressible in SFrame.
+Additionally, SFrame has extra limitations, as certain CFI directives cannot be re-encoded into the SFrame format.
+You can take a look at `as_warn` code in binutils-gdb `gas/gen-sframe.c` to learn some cases.
+
+On the other hand, the assembler approach allows SFrame to work with hand-written assembly files with CFI directives.
+
 ## ORC and `.sframe`
 
 TODO
@@ -170,7 +179,7 @@ However, the bytecode design of `.eh_frame` can sometimes be more efficient than
 
 SFrame serves as a specialized complement to `.eh_frame` rather than a complete replacement.
 The current version does not include personality routines, Language Specific Data Area (LSDA) information, or the ability to encode extra callee-saved registers.
-While these constraints make SFrame ideal for profilers and debuggers, they prevent it from supporting C++ exception handling, where libstdc++/libc++abi requires the full `.eh_frame` feature set.
+While these constraints make SFrame ideal for profilers, they prevent it from supporting C++ exception handling, where libstdc++/libc++abi requires the full `.eh_frame` feature set.
 
 In practice, executables and shared objects will likely contain all three sections:
 

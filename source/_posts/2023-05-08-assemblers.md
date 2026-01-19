@@ -371,10 +371,12 @@ The `.reloc` directive creates a relocation with the specified type, location, a
 GNU Assembler has [supported `.incbin`](https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=7e005732aa09aad97c790cab88d294aeed06eada) since 2001-07 (hey, C/C++ `#embed`).
 The review thread mentioned that `.incbin` had been supported by some other assemblers.
 
-[`.weakref`](https://sourceware.org/pipermail/binutils/2005-October/044471.html) enables the creation of weak aliases without directly modifying the target symbol's binding.
+[`.weakref alias, target`](https://sourceware.org/pipermail/binutils/2005-October/044471.html) enables the creation of weak aliases without directly modifying the target symbol's binding.
 This allows a header file in library A to optionally depend on symbols from library B.
-When the target symbol is otherwise not referenced, the object file affected by the weakref directive will include an undefined weak symbol.
-However, when the target symbol is defined or referenced (by the user), it can retain `STB_GLOBAL` binding to support [archive member extraction](/blog/2021-06-20-symbol-processing#archive-processing).
+All relocations using `alias` are redirected to `target`.
+
+When `target` is defined or referenced, the binding of `target` is unaffected (`target` can still be weak if `.weak target` is used); otherwise, `target` is made an undefined weak symbol.
+When the target symbol is defined or referenced, it can retain `STB_GLOBAL` binding to support [archive member extraction](/blog/2021-06-20-symbol-processing#archive-processing).
 GCC's `[[gnu::weakref]]` attribute, as used in runtime library headers like `libgcc/gthr-posix.h`, utilizes this feature.
 
 To support RISC-V linker relaxation, `gcc/config/tc-riscv.c` starts a new fragment after a relaxable instruction.

@@ -819,8 +819,40 @@ struct CompactUnwindDescriptor {
   uint64_t saved_regs : 8;
 ```
 
+**Baseline**
+
 In Nov 2025, I created a branch that ports compact unwind informtion to ELF as a baseline.
 <https://github.com/MaskRay/llvm-project/tree/demo-unwind>
+
+**X86 backend**
+
+- Generalize the Mach-O compact unwind code to work for ELF targets.
+- Add option "epilog-cfi" to allow disabling epilog CFI (disabled for
+  Darwin; see https://reviews.llvm.org/D42848). The current compact unwind
+  code does not handle `popq %rbp; .cfi_def_cfa %rsp, 8; ret`
+
+**Integrated assembler**
+
+- Emit .eh_frame CIEs with augmentation character 'C' for compact unwind
+- Replace FDE instructions with 64-bit unwind descriptors (extended from
+  Mach-O's 32-bit format to support future asynchronous unwinding)
+- The augmentation character 'C' mechanism should be considered
+  experimental. As a prior art, MIPS compact exception tables uses a
+  different section `.eh_frame_entry` instead.
+
+**Linker (lld)**
+
+- Split FDEs into two groups: descriptor-based (augmentation 'C') and
+  instruction-based
+- Generate .eh_frame_hdr version 2 with 12-byte table entries when compact
+  FDEs are present: (pc_ptr, unwind_descriptor_or_fde_ptr)
+- TODO: Place LSDA in a separate storage
+
+**Other tools**
+
+- llvm-readelf --unwind: Dump unwind descriptors in .eh_frame_hdr and
+  .eh_frame
+- llvm-dwarfdump --eh-frame: Recognize augmentation character 'C' in .eh_frame CIEs
 
 Current `.eh_frame_hdr` format (TODO needing overhaul)
 

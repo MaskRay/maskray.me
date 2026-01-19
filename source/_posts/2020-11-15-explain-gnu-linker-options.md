@@ -927,6 +927,31 @@ Some linkers use tree-style hashes for parallelism.
 Use zlib or zstd to compress `.debug_*` sections of the output file and mark `SHF_COMPRESSED`.
 See [Compressed debug sections](/blog/2022-01-23-compressed-debug-sections).
 
+### `--format=binary`, `-b binary`
+
+Each input file is treated as an ELF file whose `.data` section contains the file's raw binary content.
+Symbols `_binary_<filename>_{start,end,size}` are defined to provide access to the embedded data.
+
+```
+echo hello > a.txt
+ld.bfd -r -b binary -m elf_x86_64 a.txt
+objdump -s a.out
+```
+
+Output:
+```
+a.out:     file format elf64-x86-64
+
+Contents of section .data:
+ 0000 68656c6c 6f0a                        hello.
+```
+
+The way an input file is converted is similar to the following objcopy operation:
+
+```
+objcopy -I binary -O elf64-x86-64 a.txt a.o
+```
+
 ### `--hash-style=style`
 
 The ELF specification requires a hash table `DT_HASH` for dynamic symbol lookup. `--hash-style=sysv` generates the table.

@@ -13,6 +13,7 @@ tags: [debug,gcc,llvm]
 This is often a stretch goal for a build system. For example, many autotools builds use absolute paths. CMake's Ninja generator uses absolute paths (<https://gitlab.kitware.com/cmake/cmake/-/issues/13894>).
 
 Options discouraged by the post `-fdebug-prefix-map`, `-ffile-prefix-map`, and `-fmacro-prefix-map` are useful for such build systems.
+When `-fcanon-prefix-map` is specified for GCC and a a filename contains a path container, GCC uses its `realpath(filename)` to determine remapping.
 
 ## `-fdebug-compilation-dir=`
 

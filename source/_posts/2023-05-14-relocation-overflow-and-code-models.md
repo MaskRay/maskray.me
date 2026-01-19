@@ -4,7 +4,7 @@ author: MaskRay
 tags: [gcc,linker]
 ---
 
-Updated in 2025-05.
+Updated in 2025-12.
 
 When linking an oversized executable, it is possible to encounter errors such as ``relocation truncated to fit: R_X86_64_PC32 against `.text'`` (GNU ld) or `relocation R_X86_64_PC32 out of range` (ld.lld).
 These diagnostics are a result of the relocation overflow check, a feature in the linker.
@@ -76,7 +76,8 @@ In practice, relocation overflows due to code referencing code are not common.
 The more frequent occurrences of overflows involve the following categories (where we use `.text` to represent code sections, `.rodata` for read-only data, and so on):
 
 * `.text <-> .rodata`
-* `.text <-> .eh_frame`: `.eh_frame` has 32-bit offsets. 64-bit code offsets are possible, but I don't know if an implementation exists.
+* `.eh_frame -> .data.rel.local`: `.eh_frame` has `R_X86_64_PC32` relocation referencing `DW.ref.__gxx_personality_v0` even in `-mcmodel=large` output.
+* `.eh_frame_hdr -> .text`: GNU ld and ld.lld only support 32-bit offsets (`table_enc = DW_EH_PE_datarel | DW_EH_PE_sdata4;`) as of Dec 2025.
 * `.text <-> .data/.bss`
 * `.rodata <-> .data/.bss`
 

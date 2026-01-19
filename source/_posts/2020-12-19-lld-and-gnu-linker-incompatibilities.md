@@ -288,6 +288,7 @@ Relocation section '.rel.dyn' at offset 0x170 contains 2 entries:
 * Some syntax is not recognized by ld.lld, e.g. ld.lld recognizes `*(EXCLUDE_FILE(a.o) .text)` but not `EXCLUDE_FILE(a.o) *(.text)` (<https://bugs.llvm.org/show_bug.cgi?id=45764>)
   + To me the unrecognized syntax is misleading.
   + If we support one way doing something, and the thing has several alternative syntax, we may not consider the alternative syntax just for the sake of completeness.
+* When an output section has no input section, GNU ld will eliminate it if it only contains symbol assignments (e.g. `.foo { symbol = 42; }`, [ref](https://sourceware.org/binutils/docs/ld/Output-Section-Discarding.html)). ld.lld will retain such sections unless all the symbol assignments are unreferenced PROVIDED.
 * [Different orphan section placement](/blog/2024-06-02-understanding-orphan-sections). GNU ld has very complex rules and certain section names have special semantics. ld.lld adopted some of its core ideas but made a lot of simplication:
   + output sections are given ranks
   + output sections are placed after symbol assignments

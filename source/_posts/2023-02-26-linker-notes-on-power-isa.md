@@ -136,7 +136,7 @@ Alan Modra
 
 #### Tail call
 
-In the above example, `bar` tail calls `foo`.
+In the above example, `bar` tail calls `foo`, where `foo` is non-local and uses TOC (`st_other>0`).
 Most other architectures just need one branch instruction. However, the TOC ABI needs 2 extra instructions (for setting up the TOC pointer) before the branch instruction.
 ```asm
 bar:
@@ -150,11 +150,19 @@ bar:
   nop
 ```
 
-`foo` uses TOC (`st_other>0`). If `foo` is non-preemptible, the linker will resolve `b foo` to the local entry of `foo`.
-If `bar` is called without setting up the TOC pointer, `foo` will be called with an incorrect TOC pointer.
+**Case 1: `foo` is non-preemptible**
 
-In addition, if `foo` is preemptible, a call stub will be needed and the instruction following `foo` will be replaced with `ld 2,4(1)` by the linker.
+The linker will resolve `b foo` to the local entry of `foo`.
+The extra instructions for `bar` ensures that: even if `bar` is called without setting up the TOC pointer, `foo` will still get the correct TOC pointer.
+
+**Case 2: `foo` is preemptible**
+
+A call stub will be needed and the `nop` instruction following `call foo` will be replaced with `ld 2,4(1)` by the linker.
 We need a `nop` even if this is a tail call.
+
+If want to preserve tail call semantics (e.g. [this cross-module musttail issue](https://github.com/llvm/llvm-project/issues/63214)), we need to avoid this `nop => ld 2,4(1)` rewrite by the linker.
+This is doable: all callers of `bar` have to restore TOC even if `bar` is non-preemptible.
+While this can be implemented by `.localentry bar, 1`, which sets bit 5 in `st_other` (indicating zero offset between GEP and LEP, and r2 is caller-saved for callers), this has poor toolchain implementation.
 
 ### TOC-indirect to TOC-relative optimization
 

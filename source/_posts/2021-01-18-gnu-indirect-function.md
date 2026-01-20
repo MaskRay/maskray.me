@@ -1,3 +1,4 @@
+---
 layout: post
 title: GNU indirect function
 author: MaskRay

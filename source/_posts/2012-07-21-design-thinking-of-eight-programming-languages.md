@@ -2,7 +2,7 @@
 layout: post
 title: 8門編程語言的設計思考
 author: MaskRay
-tags: haskell
+tags: [haskell]
 ---
 
 今天參加了SHLUG的[月度技術分享會](http://www.shlug.org/?p=1550)，見到了三個同學的同學(呃~精確描述的話可能得寫成這樣：其中一個是同學A的同學，兩個是同學B的同學)。

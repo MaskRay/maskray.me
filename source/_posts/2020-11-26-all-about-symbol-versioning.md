@@ -1,3 +1,4 @@
+---
 layout: post
 title: All about symbol versioning
 author: MaskRay

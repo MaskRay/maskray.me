@@ -1,3 +1,4 @@
+---
 layout: post
 title: Competitive programming in Nim
 author: MaskRay

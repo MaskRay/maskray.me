@@ -1,3 +1,4 @@
+---
 layout: post
 title: Copy relocations, canonical PLT entries and protected visibility
 author: MaskRay

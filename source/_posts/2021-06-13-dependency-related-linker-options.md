@@ -1,3 +1,4 @@
+---
 layout: post
 title: Dependency related linker options
 author: MaskRay

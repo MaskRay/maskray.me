@@ -1,3 +1,4 @@
+---
 layout: post
 title: Precompiled headers
 author: MaskRay

@@ -1,3 +1,4 @@
+---
 layout: post
 title: .init, .ctors, and .init_array
 author: MaskRay

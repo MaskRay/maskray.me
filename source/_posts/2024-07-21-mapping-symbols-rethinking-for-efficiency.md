@@ -1,3 +1,4 @@
+---
 layout: post
 title: "Mapping symbols: rethinking for efficiency"
 author: MaskRay

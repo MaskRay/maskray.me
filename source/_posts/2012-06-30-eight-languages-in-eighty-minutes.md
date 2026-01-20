@@ -2,7 +2,7 @@
 layout: post
 title: 80分鐘8語言
 author: MaskRay
-tags: haskell
+tags: [haskell]
 ---
 
 今天要做一個關於不同編程語言的演講，我介紹了Scheme, Smalltalk, Lua, Perl, Ruby, Prolog, Erlang, OCaml, Haskell，其中Perl是作爲反例出現的。這些語言大多是這一年用零碎時間學的，像Lua、Prolog、Erlang、OCaml都只是看完了一兩本入門的書，對它們的特點、優點短處、擅長領域有了個比較粗淺的認識；Scheme、Smalltalk則是一本書都沒看完，理解就更爲膚淺了；Haskell雖然看過兩本入門教材，也翻看過不少文章，但它博大精深，廣博之處只能窺見一二，精妙之處也無法領會太多，但還是列出了一些我所知道的。

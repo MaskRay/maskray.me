@@ -1,3 +1,4 @@
+---
 layout: post
 title: glibc and DT_GNU_HASH
 author: MaskRay

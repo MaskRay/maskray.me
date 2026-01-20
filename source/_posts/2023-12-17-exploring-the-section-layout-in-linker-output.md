@@ -1,3 +1,4 @@
+---
 layout: post
 title: Exploring the section layout in linker output
 author: MaskRay

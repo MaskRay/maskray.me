@@ -41,7 +41,7 @@ tags: [website, node.js]
 
 使用了[docpad-plugin-related](https://github.com/Delapouite/docpad-plugin-related)這個插件。
 
-我在文章中一般寫`tags: haskell, algorithm`而不是`tags: [haskell, algorithm]`，這樣它會根據tags字符串做完全匹配，而不是根據兩篇文章tags有交集。所以我修改了下代碼
+我在文章中一般寫`tags: [haskell], algorithm`而不是`tags: [haskell, algorithm]`，這樣它會根據tags字符串做完全匹配，而不是根據兩篇文章tags有交集。所以我修改了下代碼
 
 ```coffeescript
 if typeof tags is 'string'

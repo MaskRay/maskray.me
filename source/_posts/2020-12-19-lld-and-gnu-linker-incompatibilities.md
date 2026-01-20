@@ -1,3 +1,4 @@
+---
 layout: post
 title: LLD and GNU linker incompatibilities
 author: MaskRay

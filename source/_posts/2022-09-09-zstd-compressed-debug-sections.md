@@ -1,3 +1,4 @@
+---
 layout: post
 title: zstd compressed debug sections
 author: MaskRay

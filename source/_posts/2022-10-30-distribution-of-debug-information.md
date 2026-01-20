@@ -1,3 +1,4 @@
+---
 layout: post
 title: Distribution of debug information
 author: MaskRay

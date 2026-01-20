@@ -1,3 +1,4 @@
+---
 layout: post
 title: COMDAT and section group
 author: MaskRay

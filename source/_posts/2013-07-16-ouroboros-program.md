@@ -2,7 +2,7 @@
 layout: post
 title: Ouroborus Program - quine-relay 分析
 author: MaskRay
-tags: ruby
+tags: [ruby]
 ---
 
 ## Quine Relay

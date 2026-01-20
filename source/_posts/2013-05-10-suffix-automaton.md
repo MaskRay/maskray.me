@@ -1,3 +1,4 @@
+---
 layout: post
 title: "String index structure: suffix automaton"
 author: MaskRay

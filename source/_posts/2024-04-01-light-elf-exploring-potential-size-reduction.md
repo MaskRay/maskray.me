@@ -1,3 +1,4 @@
+---
 layout: post
 title: "Light ELF: exploring potential size reduction"
 author: MaskRay

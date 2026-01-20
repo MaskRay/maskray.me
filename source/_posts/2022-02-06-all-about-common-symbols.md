@@ -1,3 +1,4 @@
+---
 layout: post
 title: All about COMMON symbols
 author: MaskRay

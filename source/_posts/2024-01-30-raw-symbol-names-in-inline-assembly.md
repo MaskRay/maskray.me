@@ -1,3 +1,4 @@
+---
 layout: post
 title: Raw symbol names in inline assembly
 author: MaskRay

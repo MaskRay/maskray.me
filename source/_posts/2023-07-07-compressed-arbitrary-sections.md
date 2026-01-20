@@ -1,3 +1,4 @@
+---
 layout: post
 title: Compressed arbitrary sections
 author: MaskRay

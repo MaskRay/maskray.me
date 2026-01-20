@@ -1,3 +1,4 @@
+---
 layout: post
 title: PI_STATIC_AND_HIDDEN/HIDDEN_VAR_NEEDS_DYNAMIC_RELOC in glibc rtld
 author: MaskRay

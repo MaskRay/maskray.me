@@ -1,3 +1,4 @@
+---
 layout: post
 title: When QOI meets XZ
 author: MaskRay

@@ -1,3 +1,4 @@
+---
 layout: post
 title: Linker garbage collection
 author: MaskRay

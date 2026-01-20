@@ -2,7 +2,7 @@
 layout: post
 title: 網絡學堂feeds2mail
 author: MaskRay
-tags: ruby
+tags: [ruby]
 ---
 
 用網頁來看網絡學堂的公告很費時間，就打算像 `rss2email` 那樣，把消息製作成郵件。

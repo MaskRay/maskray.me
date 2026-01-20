@@ -2,7 +2,7 @@
 layout: post
 title: 計算所有後綴的排名
 author: MaskRay
-tags: haskell
+tags: [haskell]
 ---
 
 佔位。以後補上解釋。

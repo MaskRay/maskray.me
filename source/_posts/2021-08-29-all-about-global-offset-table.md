@@ -1,3 +1,4 @@
+---
 layout: post
 title: All about Global Offset Table
 author: MaskRay
@@ -5,6 +6,8 @@ tags: [binutils,linker]
 ---
 
 Updated in 2025-05.
+
+In ELF, the Global Offset Table is a memory region indexed by offsets, with entries holding constants and symbol addresses.
 
 ## Symbol address
 

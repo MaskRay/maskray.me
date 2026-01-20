@@ -1,3 +1,4 @@
+---
 layout: post
 title: C++ exit-time destructors
 author: MaskRay

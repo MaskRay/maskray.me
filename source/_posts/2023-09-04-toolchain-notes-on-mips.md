@@ -1,3 +1,4 @@
+---
 layout: post
 title: Toolchain notes on MIPS
 author: MaskRay

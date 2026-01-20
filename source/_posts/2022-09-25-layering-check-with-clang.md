@@ -1,3 +1,4 @@
+---
 layout: post
 title: Layering check with Clang
 author: MaskRay

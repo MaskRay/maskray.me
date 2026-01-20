@@ -1,3 +1,4 @@
+---
 layout: post
 title: Ko-Aluru suffix array construction algorithm
 author: MaskRay

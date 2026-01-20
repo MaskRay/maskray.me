@@ -2,7 +2,7 @@
 layout: post
 title: Evil--在Emacs中模擬Vim
 author: MaskRay
-tags: emacs
+tags: [emacs]
 ---
 
 这篇文章过时了，參見[皈依Emacs](/blog/2015-09-18-conversion-to-emacs)，现在我對操作方式有較大調整。

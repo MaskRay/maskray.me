@@ -1,3 +1,4 @@
+---
 layout: post
 title: "Clang's -O0 output: branch displacement and size increase"
 author: MaskRay

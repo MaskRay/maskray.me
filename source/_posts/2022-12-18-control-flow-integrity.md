@@ -1,3 +1,4 @@
+---
 layout: post
 title: Control-flow integrity
 author: MaskRay

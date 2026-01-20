@@ -1,3 +1,4 @@
+---
 layout: post
 title: "AddressSanitizer: global variable instrumentation"
 author: MaskRay

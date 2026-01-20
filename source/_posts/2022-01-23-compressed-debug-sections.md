@@ -1,3 +1,4 @@
+---
 layout: post
 title: Compressed debug sections
 author: MaskRay

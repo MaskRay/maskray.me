@@ -1,3 +1,4 @@
+---
 layout: post
 title: A compact section header table for ELF
 author: MaskRay

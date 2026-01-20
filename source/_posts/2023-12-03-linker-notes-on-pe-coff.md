@@ -1,3 +1,4 @@
+---
 layout: post
 title: Linker notes on PE/COFF
 author: MaskRay

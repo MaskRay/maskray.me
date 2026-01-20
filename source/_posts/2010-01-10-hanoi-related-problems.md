@@ -1,3 +1,4 @@
+---
 layout: post
 title: 三柱漢諾塔相關擴展問題
 author: MaskRay

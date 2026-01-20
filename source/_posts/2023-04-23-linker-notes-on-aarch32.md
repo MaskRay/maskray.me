@@ -1,3 +1,4 @@
+---
 layout: post
 title: Linker notes on AArch32
 author: MaskRay

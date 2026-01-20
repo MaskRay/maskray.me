@@ -1,3 +1,4 @@
+---
 layout: post
 title: J語言初探
 author: MaskRay

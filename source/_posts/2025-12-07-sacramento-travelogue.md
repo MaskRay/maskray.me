@@ -2,7 +2,7 @@
 layout: post
 title: Sacramento游记
 author: MaskRay
-tags: travel
+tags: [travel]
 ---
 
 周末从旧金山湾南部去Sacramento参观。

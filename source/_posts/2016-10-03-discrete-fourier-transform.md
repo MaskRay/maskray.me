@@ -1,3 +1,4 @@
+---
 layout: post
 title: 整係數Discrete Fourier transform技巧
 author: MaskRay

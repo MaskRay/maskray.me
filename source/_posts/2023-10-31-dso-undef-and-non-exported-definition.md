@@ -1,3 +1,4 @@
+---
 layout: post
 title: DSO undef and non-exported definition
 author: MaskRay

@@ -1,3 +1,4 @@
+---
 layout: post
 title: Linker notes on x86
 author: MaskRay

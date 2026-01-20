@@ -1,3 +1,4 @@
+---
 layout: post
 title: -march=, -mcpu=, and -mtune=
 author: MaskRay

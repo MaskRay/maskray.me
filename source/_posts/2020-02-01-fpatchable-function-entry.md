@@ -1,3 +1,4 @@
+---
 layout: post
 title: -fpatchable-function-entry=N[,M]
 author: MaskRay

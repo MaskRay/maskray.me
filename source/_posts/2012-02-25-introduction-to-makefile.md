@@ -2,7 +2,7 @@
 layout: post
 title: Makefile介紹
 author: MaskRay
-tags: makefile
+tags: [makefile]
 ---
 
 [slide下載](/static/introduction_to_makefile.pdf)

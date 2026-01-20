@@ -1,3 +1,4 @@
+---
 layout: post
 title: C minifier with Clang
 author: MaskRay

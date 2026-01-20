@@ -1,3 +1,4 @@
+---
 layout: post
 title: Segment tree
 author: MaskRay

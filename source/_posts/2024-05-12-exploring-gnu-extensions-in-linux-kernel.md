@@ -1,3 +1,4 @@
+---
 layout: post
 title: Exploring GNU extensions in the Linux kernel
 author: MaskRay

@@ -1,3 +1,4 @@
+---
 layout: post
 title: Force-directed算法(1)——Fruchterman-Reingold
 author: MaskRay

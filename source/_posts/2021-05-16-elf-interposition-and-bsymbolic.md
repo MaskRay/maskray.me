@@ -1,3 +1,4 @@
+---
 layout: post
 title: ELF interposition and -Bsymbolic
 author: MaskRay

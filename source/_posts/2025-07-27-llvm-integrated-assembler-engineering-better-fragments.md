@@ -152,6 +152,7 @@ Specifically, these features are:
 * `-mbranches-within-32B-boundaries`. See [Align branches within 32-Byte boundary(NOP padding)](https://reviews.llvm.org/D70157)
 * [[X86] Relax existing instructions to reduce the number of nops needed for alignment purposes](https://reviews.llvm.org/D75203)
 * ["Enhanced relaxation"](https://reviews.llvm.org/D76286): The feature allows x86 prefix padding for all instructions, effectively making all instructions span-dependent and requiring its own fragment. 
+  My [D94542](https://reviews.llvm.org/D94542) disabled this by default due to concern of `-g` vs `-g0` differences.
 
 My recent optimization efforts demanded careful attention to these particularly complex and performance-sensitive code.
 

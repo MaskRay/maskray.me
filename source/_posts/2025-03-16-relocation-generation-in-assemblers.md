@@ -126,6 +126,25 @@ If you are interested in relocation representations in different object file for
 If an equated symbol `sym` is resolved relative to a section, relocations are generated against `sym`.
 Otherwise, if it resolves to a constant or an undefined symbol, relocations are generated against that constant or undefined symbol.
 
+### Fixup overflow check
+
+For `.long x`, GAS accepts `x` if its value is in the range `(-2**32, 2**32)`.
+This design allows `.long x` to work regardless of signedness.
+When a symbol is involved, GAS supports both `.long sym-0xffffffff` and `.long sym+1`,
+as well as `.long sym+0xffffffff` and `.long sym-1`.
+However, `.long sym+0x100000000` is rejected in favor of `.long sym+0`.
+
+The underlying check asks: "can this value be truncated to 32 bits without losing bit-pattern information?"
+The accepted range is the union of:
+
+* `uint32_t` values: `[0, 2**32)`
+* `int32_t` values: `[-2**31, 2**31)`
+* Negative values that fit in 33 bits: `(-2**32, -2**31)`
+
+The union gives `(-2**32, 2**32)`.
+
+Note: the union of just `int32_t` and `uint32_t` is `[-2**31, 2**32)`, which matches `checkIntUInt` in lld/ELF (<https://reviews.llvm.org/D63690>).
+
 ## Examples in action
 
 **Branches**

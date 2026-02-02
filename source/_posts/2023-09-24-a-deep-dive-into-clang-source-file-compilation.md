@@ -646,6 +646,10 @@ TargetPassConfig::addMachinePasses
   TargetPassConfig::addBlockPlacement  # -O1 or above
   TargetPassConfig::addPreEmitPass
   createBasicBlockSectionsPass
+
+  // AArch64 has AArch64PointerAuth, AArch64BranchTargets, and BranchRelaxation
+  addPostBBSections
+
   // kcfi indirect call checks.
   // RISCV has createRISCVExpandPseudoPass.
   // X86 has security hardening passes.

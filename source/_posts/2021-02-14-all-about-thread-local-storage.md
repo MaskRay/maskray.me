@@ -5,7 +5,7 @@ author: MaskRay
 tags: [binutils,elf,tls]
 ---
 
-Updated in 2025-02.
+Updated in 2026-01.
 
 Thread-local storage (TLS) provides a mechanism allocating distinct objects for different threads.
 It is the usual implementation for GCC extension `__thread`, C11 `_Thread_local`, and C++11 `thread_local`, which allow the use of the declared name to refer to the entity associated with the current thread.
@@ -765,7 +765,7 @@ The inefficiency comes from these aspects:
 
 libgcc has a mature runtime. In compiler-rt, the runtime was contributed by Android folks in 2015.
 
-Currently Android and OpenBSD targets default to `-femulated-tls` in Clang. See `hasDefaultEmulatedTLS`.
+Currently Android API levels < 29 and OpenBSD targets default to `-femulated-tls` in Clang. See `hasDefaultEmulatedTLS`.
 
 ## C++ thread_local
 

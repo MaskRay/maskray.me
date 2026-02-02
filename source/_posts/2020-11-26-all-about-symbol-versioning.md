@@ -506,7 +506,8 @@ a
 ./a: /tmp/t/v2/c2.so: version `v1' not found (required by /tmp/t/v2/b.so)
 ```
 
-The [BZ24718#319 comment](https://sourceware.org/bugzilla/show_bug.cgi?id=24718#c19) in 2026 asked `VER_FLG_WEAK` in `Vernaux::vna_flags` extension, allowing rtld to continue execution (with a verbose-mode warning `weak version ... not found`) instead of failing.
+The [BZ24718#319 comment](https://sourceware.org/bugzilla/show_bug.cgi?id=24718#c19) in 2026 requested a feature: When all undefined references to a version are weak, set `vna_flags` to `VER_FLG_WEAK` in the `.gnu.version_r` section.
+While this remains unimplemented, I have implemented this idea for lld in January 2026.
 
 If the `v1` Verneed in `a` has the `VER_FLG_WEAK` flag, we shall see the following instead:
 

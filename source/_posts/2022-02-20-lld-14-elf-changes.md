@@ -2,7 +2,7 @@
 layout: post
 title: lld 14 ELF changes
 author: MaskRay
-tags: [linker,llvm]
+tags: [linker,llvm,release]
 ---
 
 llvm-project 14 will be released soon.

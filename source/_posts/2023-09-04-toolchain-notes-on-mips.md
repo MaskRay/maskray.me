@@ -287,57 +287,263 @@ When the callee is defined in a shared object, the linker will create a PLT entr
 See "Linking PIC and non-PIC in the same object" on [RFC: Adding non-PIC executable support to MIPS](https://gcc.gnu.org/legacy-ml/gcc/2008-06/msg00670.html) for detail.
 This RFC [added `STO_MIPS_PLT` to binutils](https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=861fb55ab50ac986e273334639c4c44bb3353efb).
 
-## `-mno-shared` for o32/n32 non-PIC
+## `-mabicalls`, `-mshared`, `-fpic`
 
-For the o32 ABI, GCC generated assembly normally uses `.cpload $25` pseudo-op at function entry to set up $gp.
-```asm
-lui	$gp,%hi(_gp_disp)
-addiu	$gp,$gp,%lo(_gp_disp)
-addu	$gp,$gp,.cpload argument
-```
-
-For `-fno-pic` code, we can replace the three instructions with two using `-mno-shared`:
-```
-lui     $28,%hi(__gnu_local_gp)
-addiu   $28,$28,%lo(__gnu_local_gp)
-```
-
-`__gnu_local_gp` is defined by the linker.
-
-In addition, for a function call that is known to be defined in the executable, GCC generates `j` and `jal` instructions (prior to Release 6).
-A `R_MIPS_26` relocation is required.
+GCC's MIPS port uses several interrelated options and internal macros to control PIC code generation.
+The key macros in `gcc/config/mips/mips.h` are:
 
 ```c
-void ext();
-__attribute__((noinline)) static void bar() { ext(); ext(); }
-void foo() { bar(); bar(); }
-// jal bar instead of
-// (o32) lw $16,%got(bar)($28); addiu $16,$16,%lo(bar); move $25,$16; .reloc .,R_MIPS_JALR,bar; jalr $25
-// (n32) lw $16,%got_page(bar)($28); addiu $16,$16,%got_ofst(bar); move $25,$16; .reloc .,R_MIPS_JALR,bar; jalr $25
+// True for n64 ABI (64-bit symbols in ELF)
+#define FILE_HAS_64BIT_SYMBOLS  (mips_abi == ABI_64)
+#define ABI_HAS_64BIT_SYMBOLS   (FILE_HAS_64BIT_SYMBOLS && Pmode == DImode && !TARGET_SYM32)
+
+// True when we can use absolute addressing with -mabicalls
+// Key: disabled for n64 because "GOT accesses are so much shorter" than 64-bit absolute sequences
+#define TARGET_ABSOLUTE_ABICALLS \
+  (TARGET_ABICALLS && !TARGET_SHARED && TARGET_EXPLICIT_RELOCS && !ABI_HAS_64BIT_SYMBOLS)
+
+// .option pic0 (non-PIC with abicalls) vs .option pic2 (full PIC)
+#define TARGET_ABICALLS_PIC0  (TARGET_ABSOLUTE_ABICALLS && TARGET_PLT)
+#define TARGET_ABICALLS_PIC2  (TARGET_ABICALLS && !TARGET_ABICALLS_PIC0)
+
+// Can use J and JAL instructions
+#define TARGET_ABSOLUTE_JUMPS  (!flag_pic || TARGET_ABSOLUTE_ABICALLS)
 ```
 
-GCC 4.3 has enabled `-mno-shared` by default for non-PIC.
+### How the options interact
 
-The n64 ABI does not have the optimization. Suppressing the j/jal optimization can prevent `R_MIPS_26` overflows.
+`-mabicalls` (default for Linux) enables SVR4-style PIC code generation.
 
-## `-mno-abicalls`
+In `mips.opt`, `TARGET_SHARED` defaults to 1 (`-mshared`). However, the driver spec in `gnu-user.h` modifies this:
+```c
+/* Default to -mno-shared for non-PIC.  */
+#define NO_SHARED_SPECS \
+  " %{mshared|mno-shared:;:%{" NO_FPIE_AND_FPIC_SPEC ":-mno-shared}}"
+```
 
-TODO
+This means:
+
+* If `-mshared` or `-mno-shared` is explicit: use that
+* Else if no `-fpic`/`-fpie`: add `-mno-shared`
+* Else (`-fpic`/`-fpie` given): keep default `-mshared`
+
+So effectively:
+
+* Default (no flags): `-mno-shared` added → non-PIC for o32/n32
+* `-fpic`: stays `-mshared` → full PIC
+* `-fno-pic`: `-mno-shared` added → non-PIC
+* Explicit `-mshared`/`-mno-shared` overrides `-fpic`/`-fno-pic`
+
+**For o32/n32** (`ABI_HAS_64BIT_SYMBOLS` is false):
+
+* `-mno-shared`: `TARGET_ABSOLUTE_ABICALLS` can be true → `.option pic0`, direct `jal`, absolute addressing
+* `-mshared`: `TARGET_ABSOLUTE_ABICALLS` is false → `.option pic2`, full PIC
+
+**For n64** (`ABI_HAS_64BIT_SYMBOLS` is true):
+
+* `TARGET_ABSOLUTE_ABICALLS` is **always false** due to `!ABI_HAS_64BIT_SYMBOLS`
+* With `-mabicalls` (default), `TARGET_ABICALLS_PIC2` is always true - full PIC regardless of `-mshared`/`-fpic`
+* With `-mno-abicalls`, `TARGET_ABICALLS_PIC2` is false (non-PIC code)
+* Rationale for no pic0 optimization: building a 64-bit address requires 6 instructions, while GOT access is just 2-3 instructions
+
+### `-mabicalls` vs `-mno-abicalls`
+
+`-mabicalls` is the default for Linux targets.
+
+`__PIC__` is defined only when `TARGET_ABICALLS_PIC2` is true (see `flag_pic = 1` in mips.cc):
+
+**n64 with `-mabicalls`** (always PIC2, `__PIC__` defined, LOADGP_NEWABI):
+
+```asm
+// GP setup via %gp_rel
+lui     $28,%hi(%neg(%gp_rel(test)))
+daddu   $28,$28,$25
+daddiu  $28,$28,%lo(%neg(%gp_rel(test)))
+// Hidden function call: %got_disp
+ld      $25,%got_disp(hidden_func)($28)
+jalr    $25
+// Extern function call: %call16
+ld      $25,%call16(ext_func)($28)
+jalr    $25
+// Hidden/extern variable access: %got_disp
+ld      $2,%got_disp(hidden_var)($28)
+lw      $3,0($2)
+ld      $2,%got_disp(ext_var)($28)
+lw      $2,0($2)
+```
+
+**o32 with `-mabicalls -fpic`** (PIC2, `__PIC__` defined, LOADGP_OLDABI):
+```asm
+// GP setup via .cpload pseudo-op
+.cpload $25
+// Hidden function call: %got
+lw      $25,%got(hidden_func)($28)
+jalr    $25
+// Extern function call: %call16
+lw      $25,%call16(ext_func)($28)
+jalr    $25
+// Hidden/extern variable access: %got
+lw      $2,%got(hidden_var)($28)
+lw      $3,0($2)
+lw      $2,%got(ext_var)($28)
+lw      $2,0($2)
+```
+
+**n32 with `-mabicalls -fpic`** (PIC2, `__PIC__` defined, LOADGP_NEWABI):
+```asm
+// GP setup via %gp_rel
+lui     $28,%hi(%neg(%gp_rel(test)))
+addu    $28,$28,$25
+addiu   $28,$28,%lo(%neg(%gp_rel(test)))
+// Hidden function call: %got_disp (no lazy binding)
+lw      $25,%got_disp(hidden_func)($28)
+jalr    $25
+// Extern function call: %call16 (lazy binding)
+lw      $25,%call16(ext_func)($28)
+jalr    $25
+// Hidden/extern variable access: %got_disp
+lw      $2,%got_disp(hidden_var)($28)
+lw      $3,0($2)
+lw      $2,%got_disp(ext_var)($28)
+lw      $2,0($2)
+```
+
+**o32/n32 with `-mabicalls -fno-pic`** (default) or **`-mno-abicalls`** (`__PIC__` NOT defined):
+```asm
+// Hidden/extern function call: direct
+jal     hidden_func
+jal     ext_func
+// Hidden/extern variable access: absolute
+lui     $2,%hi(hidden_var)
+lw      $3,%lo(hidden_var)($2)
+lui     $2,%hi(ext_var)
+lw      $2,%lo(ext_var)($2)
+```
+
+Both generate identical code. The difference is that `-mabicalls -fno-pic` emits `.abicalls` and `.option pic0` directives (for linker LA25 thunk generation when called from PIC code), while `-mno-abicalls` omits these directives entirely.
+
+**n64 with `-mno-abicalls`** (`__PIC__` NOT defined):
+```asm
+// Hidden/extern function call: direct
+jal     hidden_func
+jal     ext_func
+// Hidden/extern variable access: absolute (64-bit address, 6 instructions each)
+lui     $2,%highest(hidden_var)
+daddiu  $2,$2,%higher(hidden_var)
+lui     $3,%hi(hidden_var)
+dsll    $2,$2,32
+daddu   $2,$2,$3
+lw      $3,%lo(hidden_var)($2)
+```
+
+GCC errors if you specify `-fpic -mno-abicalls`.
+
+## `-mshared`/`-mno-shared` code generation
+
+As explained above, these options only affect o32/n32 (not n64).
+With `-mno-shared`, the assembler is invoked with `-call_nonpic`; with `-mshared`, it uses `-KPIC`.
+
+## `-mlong-calls`
+
+GCC's mips port [added](https://gcc.gnu.org/git/?p=gcc.git;a=commit;h=d1399bd0ff3893bb9ebea7b977c7f3ec91b728b0) `-mlong-calls` in 1993-03.
+This option is only useful with `-mno-abicalls`.
+
+The `jal`/`j` instructions can only reach targets within a 256MB region (26-bit offset shifted left 2 bits, upper 4 bits of PC preserved).
+`-mlong-calls` generates code that builds the full address in a register:
+
+```asm
+// Without -mlong-calls (direct call, limited range)
+jal  external_func
+
+// With -mlong-calls on n64 (full 64-bit address)
+lui     $2, %highest(external_func)   // bits 63-48
+lui     $3, %hi(external_func)        // bits 31-16
+daddiu  $2, $2, %higher(external_func) // bits 47-32
+daddiu  $3, $3, %lo(external_func)    // bits 15-0
+dsll    $2, $2, 32
+daddu   $2, $2, $3
+jalr    $2
+```
+
+When `-mabicalls` is enabled, `-mlong-calls` has no effect because calls already go through the GOT, which naturally supports the full address range.
+
+### GP initialization styles
+
+GCC uses different GP initialization depending on `mips_current_loadgp_style()`:
+
+**`LOADGP_OLDABI`** (o32 with `-mshared` or `-mno-explicit-relocs`):
+Uses `.cpload $25` pseudo-op:
+```asm
+.cpload $25
+```
+Which the assembler expands to:
+```asm
+lui     $gp,%hi(_gp_disp)
+addiu   $gp,$gp,%lo(_gp_disp)
+addu    $gp,$gp,$25
+```
+
+**`LOADGP_NEWABI`** (n32/n64 with `-mshared`, or n64 with `-mabicalls`):
+Uses `%gp_rel` to compute GP from the function address in `$25`:
+```asm
+lui     $28,%hi(%neg(%gp_rel(func)))
+addu    $28,$28,$25
+addiu   $28,$28,%lo(%neg(%gp_rel(func)))
+```
+
+**`LOADGP_ABSOLUTE`** (o32/n32 with `-mabicalls -mno-shared -mexplicit-relocs`):
+When `TARGET_ABSOLUTE_ABICALLS` is true and the function needs GP (e.g., for GOT-based TLS access), uses `__gnu_local_gp`:
+```c
+// mips64el-linux-gnuabi64-gcc-14 -mabi=32 -fno-pic -S -O2
+extern __thread int extern_tls_var;
+int test(void) { return extern_tls_var; }
+```
+```asm
+lui     $28,%hi(__gnu_local_gp)
+addiu   $28,$28,%lo(__gnu_local_gp)
+lw      $2,%gottprel(extern_tls_var)($28)
+```
+
+`__gnu_local_gp` is defined by the linker. Most functions in this mode don't need GP since they use absolute `%hi/%lo` addressing for regular symbols.
 
 ## `-mplt` for o32/n32 non-PIC
 
-MIPS did not have PLT at all until 2008.
-For a default visibility external linkage function, a direct call would require PLT, so GCC MIPS generates a GOT code sequence instead (like x86 `-fno-plt`).
+MIPS did not have PLT support in the linker until 2008.
+Before that, for default visibility external functions, GCC generated GOT-based call sequences (like x86 `-fno-plt`).
 
-However, the GOT code sequence is long and requires indirection via $25.
-For `-fno-pic` code where the callee is defined in the executable itself, this code sequence is rather inefficient.
+Since 2008, `-mplt` is **enabled by default** for `-fno-pic` code ([RFC: Adding non-PIC executable support to MIPS](https://gcc.gnu.org/legacy-ml/gcc/2008-06/msg00670.html)).
+This generates direct `jal` calls for all functions. If the callee ends up defined in a shared object, a PLT entry will be needed.
 
-Since 2008, `-fno-pic -mplt` instructs GCC to [generate direct function calls](https://gcc.gnu.org/legacy-ml/gcc/2008-06/msg00670.html) instead.
-If the callee ends up defined in a shared object, a PLT entry will be needed.
+`-fno-pic` (equivalently `-fno-pic -mplt`):
+```asm
+// Hidden/extern function: direct call
+jal     hidden_func
+jal     ext_func
+// Hidden/extern variable: absolute
+lui     $2,%hi(hidden_var)
+lw      $3,%lo(hidden_var)($2)
+lui     $2,%hi(ext_var)
+lw      $2,%lo(ext_var)($2)
 ```
-// For the code above,
-// jal ext  instead of
-// lw $25,%call16(ext)($28); .reloc .,R_MIPS_JALR,ext; jalr $25
+
+`-mno-plt` disables this and creates a hybrid mode where hidden symbols use direct addressing while extern symbols use GOT-based access:
+
+`-fno-pic -mno-plt`:
+```asm
+// GP setup via __gnu_local_gp
+lui     $28,%hi(__gnu_local_gp)
+addiu   $28,$28,%lo(__gnu_local_gp)
+// Hidden function: direct call
+jal     hidden_func
+// Extern function: via GOT
+lw      $25,%call16(ext_func)($28)
+jalr    $25
+// Hidden variable: absolute
+lui     $2,%hi(hidden_var)
+lw      $3,%lo(hidden_var)($2)
+// Extern variable: via GOT
+lw      $2,%got(ext_var)($28)
+lw      $2,0($2)
 ```
 
 `-mplt` also works with n64 `-msym32`.
@@ -412,7 +618,16 @@ GNU ld has quite involved merging strategy for this section.
 
 ## `.option pic0` and `.option pic2` directives
 
-TODO
+These assembler directives control whether position-independent or position-dependent code is generated.
+
+* `.option pic0` - Generate position-dependent (non-PIC) code. Enables direct `jal`/`j` instructions and absolute addressing.
+* `.option pic2` - Generate position-independent code using the GOT.
+
+GCC emits `.option pic0` for o32/n32 when `-mno-shared` is in effect (the default).
+n64 does not use `.option pic0` - it always generates full PIC-style code with `-mabicalls`.
+
+The assembler uses these directives to determine which relocation types to emit and whether certain optimizations are valid.
+When compiling with `-mno-shared`, the assembler is also invoked with `-call_nonpic`; with `-mshared`, it uses `-KPIC`.
 
 ## `.set noreorder` directive
 
@@ -491,8 +706,6 @@ LLVM integrated assembler parses these operators in the generic code (<https://r
 ```asm
 lui   $gp, %hi(%neg(%gp_rel(foo+4)))
 ```
-
-GCC's mips port [added](https://gcc.gnu.org/git/?p=gcc.git;a=commit;h=d1399bd0ff3893bb9ebea7b977c7f3ec91b728b0) `-mlong-calls` in 1992-03.
 
 The following script demonstrate that we can use a GCC cross compiler configured with 32-bit MIPS to build 64-bit object files.
 

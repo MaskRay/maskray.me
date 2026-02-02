@@ -2,7 +2,7 @@
 layout: post
 title: lld 19 ELF changes
 author: MaskRay
-tags: [linker,llvm]
+tags: [linker,llvm,release]
 ---
 
 LLVM 19 will be released.

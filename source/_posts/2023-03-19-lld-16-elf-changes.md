@@ -2,7 +2,7 @@
 layout: post
 title: lld 16 ELF changes
 author: MaskRay
-tags: [linker,llvm]
+tags: [linker,llvm,release]
 ---
 
 llvm-project 16 was just released.

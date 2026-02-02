@@ -2,7 +2,7 @@
 layout: post
 title: lld 18 ELF changes
 author: MaskRay
-tags: [linker,llvm]
+tags: [linker,llvm,release]
 ---
 
 LLVM 18 will be released.

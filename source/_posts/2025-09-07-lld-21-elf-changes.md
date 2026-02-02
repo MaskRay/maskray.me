@@ -2,7 +2,7 @@
 layout: post
 title: lld 21 ELF changes
 author: MaskRay
-tags: [linker,llvm]
+tags: [linker,llvm,release]
 ---
 
 LLVM 21.1 have been released.

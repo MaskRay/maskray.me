@@ -2,7 +2,7 @@
 layout: post
 title: lld 15 ELF changes
 author: MaskRay
-tags: [linker,llvm]
+tags: [linker,llvm,release]
 ---
 
 llvm-project 15 was just released.

@@ -5,7 +5,7 @@ author: MaskRay
 tags: [linker,llvm]
 ---
 
-Updated in 2025-05.
+Updated in 2026-01.
 
 ## Reproduce tarball
 
@@ -271,6 +271,10 @@ ld.bfd: total time in link: 9.879890
 0.02487 Write sections {"detail":".text"}
 ...
 ```
+
+### `/summary`
+
+`lld-link /summary` dumps PDB information and the cumulative size of all input OBJ files.
 
 ### `mold --perf`
 

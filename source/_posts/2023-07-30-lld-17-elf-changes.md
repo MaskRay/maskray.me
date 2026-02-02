@@ -2,7 +2,7 @@
 layout: post
 title: lld 17 ELF changes
 author: MaskRay
-tags: [linker,llvm]
+tags: [linker,llvm,release]
 ---
 
 LLVM 17 will be released.

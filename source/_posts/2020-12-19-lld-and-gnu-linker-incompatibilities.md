@@ -28,7 +28,7 @@ Many of them just serve as educational purposes and my personal reference. There
 * The default image base for `-no-pie` links is different. For example, on x86-64, GNU ld defaults to 0x400000 while ld.lld defaults to 0x200000.
 * GNU ld synthesizes a `STT_FILE` symbol when copying non-`STT_SECTION` `STB_LOCAL` symbols. ld.lld doesn't.
   + The `STT_FILE` symbol name is the input filename. For compiler driver specified startup files like `crti.o` and `crtn.o`, their absolute paths will end up in the linked image. This breaks local determinism (toolchain paths are leaked) for some users.
-  + I filed <https://bugs.llvm.org/show_bug.cgi?id=48023> and <https://sourceware.org/bugzilla/show_bug.cgi?id=26822>. From binutils 2.36 onwards, the base name will be used.
+  + I filed <https://github.com/llvm/llvm-project/issues/47367> and <https://sourceware.org/bugzilla/show_bug.cgi?id=26822>. From binutils 2.36 onwards, the base name will be used.
 * Default library paths.
   + GNU ld has default library paths.
   + ld.lld doesn't. This is intentional so <https://reviews.llvm.org/D70048> (NetBSD) cannot be accepted.
@@ -96,6 +96,7 @@ Many of them just serve as educational purposes and my personal reference. There
 * In GNU ld, a definition referenced by an unneeded (`--as-needed`) shared object is not exported into `.dynsym` [PR26551](https://sourceware.org/bugzilla/show_bug.cgi?id=26551). gold and ld.lld export such a definition.
 * ppc64: GNU ld defines `.TOC.` to the output section of `.got` plus 0x8000. ld.lld chooses the input section `.got` plus 0x8000. All architectures I know define their GOT relocations relative to the input section `.got`.
 * When a copy relocated symbol has aliases (e.g. `environ`, `_environ`, `__environ`), ld.lld copies all aliases, while GNU ld only copies some aliases.
+* In GNU ld, symbols not in `--retain-symbols-file` are excluded from `.symtab` but `.dynsym` is unaffected, while ld.lld excludes symbols from both `.symtab` and `.dynsym`. <https://github.com/llvm/llvm-project/issues/91055>
 
 ### `--as-needed`
 

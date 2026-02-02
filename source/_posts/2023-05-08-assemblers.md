@@ -539,6 +539,10 @@ This corresponds to system-specific local label prefixes in GNU assembler.
 The symbol is not external and will be discarded during linking.
 For ELF targets, the `MCContext::createLinkerPrivateTempSymbol` function creates a temporary symbol starting with ".L".
 
+`.L` as a prefix is better than `L`: `.L` prevents name collision with user-defined symbols.
+Object file formats that use L typically decorate regular symbols with _ to avoid name collision, which causes uglier names.
+([BPF doesn't use `.L`](https://github.com/llvm/llvm-project/pull/95103))
+
 ### Workflow
 
 TODO

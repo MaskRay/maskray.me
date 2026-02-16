@@ -2,7 +2,7 @@
 layout: post
 title: Port LLVM XRay to Apple systems
 author: MaskRay
-tags: [gcc,linker]
+tags: [llvm]
 ---
 
 I do not use Apple products myself, but I sometimes delve into Mach-O due to my interest in object file formats.

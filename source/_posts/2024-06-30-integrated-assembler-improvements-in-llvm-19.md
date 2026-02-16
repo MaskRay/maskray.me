@@ -2,7 +2,7 @@
 layout: post
 title: Integrated assembler improvements in LLVM 19
 author: MaskRay
-tags: [assebmly,llvm]
+tags: [assembler,llvm]
 ---
 
 Within the LLVM project, MC is a library responsible for handling assembly, disassembly, and object file formats.

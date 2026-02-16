@@ -2,7 +2,7 @@
 layout: post
 title: C standard library headers in C++
 author: MaskRay
-tags: [gcc,glibc]
+tags: [c++,gcc,glibc]
 ---
 
 Updated in 2024-01.

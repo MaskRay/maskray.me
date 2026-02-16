@@ -359,12 +359,19 @@ lld/ELF uses a multi-pass algorithm in `finalizeAddressDependentContent`:
 ```cpp
 assignAddresses();
 for (pass = 0; pass < 30; ++pass) {
+  // Pre-create empty ThunkSections with a step size of about 2 * thunkSectionSpacing.
+  // This ensures that for the most common thunk-needing relocation type, the relocations
+  // can find a ThunkSection within thunkSectionSpacing bytes.
   if (pass == 0)
-    createInitialThunkSections();  // pre-create empty ThunkSections
+    createInitialThunkSections();
+
   bool changed = false;
   for (relocation : all_relocations) {
+    // If this relocation needs a thunk and the thunk is still in range, skip.
+    // Otherwise, restore the original relocation.
     if (pass > 0 && normalizeExistingThunk(rel))
-      continue;  // existing thunk still in range
+      continue;
+
     if (!needsThunk(rel)) continue;
     Thunk *t = getOrCreateThunk(rel);
     ts = findOrCreateThunkSection(rel, src);
@@ -372,7 +379,8 @@ for (pass = 0; pass < 30; ++pass) {
     rel.sym = t->getThunkTargetSym();  // redirect
     changed = true;
   }
-  mergeThunks();  // insert ThunkSections into output
+  // Intersperse ThunkSections and regular input sections.
+  mergeThunks();
   if (!changed) break;
   assignAddresses();  // recalculate with new thunks
 }

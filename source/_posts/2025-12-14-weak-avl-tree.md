@@ -2,7 +2,7 @@
 layout: post
 title: Weak AVL Tree
 author: MaskRay
-tags: [algorithm, data structure]
+tags: [algorithm,data structure]
 ---
 
 tl;dr: Weak AVL trees are replacements for AVL trees and red-black trees.

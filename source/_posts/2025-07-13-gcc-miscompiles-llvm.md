@@ -2,7 +2,7 @@
 layout: post
 title: "GCC 13.3.0 miscompiles LLVM"
 author: MaskRay
-tags: [assembler,llvm]
+tags: [assembler,gcc,llvm]
 ---
 
 For years, I've been involved in updating LLVM's MC layer. A recent journey led me to [eliminate the `FK_PCRel_` fixup kinds](/blog/2025-05-26-llvm-integrated-assembler-improving-expressions-and-relocations):

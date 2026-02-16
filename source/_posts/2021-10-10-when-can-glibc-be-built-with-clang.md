@@ -5,7 +5,11 @@ author: MaskRay
 tags: [clang,glibc]
 ---
 
-In September, I wrote "So, dear glibc, will you be happy with my sending Clang patches?" in [Build glibc with LLD 13](/blog/2021-09-05-build-glibc-with-lld).
+Updated in 2026: glibc 2.43 added experimental support for building with Clang.
+
+---
+
+In September 2021, I wrote "So, dear glibc, will you be happy with my sending Clang patches?" in [Build glibc with LLD 13](/blog/2021-09-05-build-glibc-with-lld).
 We have come to a turning point.
 
 In Linux Plumbers Conference 2021, at the glibc Birds of a Feather session, I asked the Clang buildability question to the glibc stewards.

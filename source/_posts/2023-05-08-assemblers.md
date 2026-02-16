@@ -438,6 +438,10 @@ For an equated symbol (`symbol_equated_reloc_p`) or weak alias created by `.weak
 
 `config/tc-riscv.c` defines `md_apply_fix` to split a fixup into two and add a `BFD_RELOC_RISCV_RELAX` fixup (`R_RISCV_RELAX` relocation) for linker-relaxable instructions.
 It also handles `BFD_RELOC_RISCV_SUB8, BFD_RELOC_RISCV_SUB16, BFD_RELOC_RISCV_SUB32, BFD_RELOC_RISCV_SUB64`.
+
+For i386 ELF (REL relocations), `md_apply_fix` in `config/tc-i386.c` must pre-compensate for `bfd_install_relocation`'s subtraction of `reloc_entry->address` on `partial_inplace` PC-relative relocations.
+`BFD_RELOC_32_PCREL` and `BFD_RELOC_386_PLT32` add `fx_where + fr_address` (twice for section symbols) to the value before writing to instruction bytes, so that the final implicit addend is correct after `bfd_install_relocation`.
+The `value = -4` override for PLT32 is only used for the RELA case (x86-64), where `bfd_install_relocation` does not modify instruction bytes.
 )
 
 Set up symbol table.
@@ -454,6 +458,9 @@ ELF defines this hook (`elf_adjust_symtab`) to define group signature symbols as
 
 `write_relocs` writes relocations. `tc_gen_reloc` and `install_reloc` are called for each fixup.
 `install_reloc` calls `bfd_install_relocation` to update the relocated location.
+For `partial_inplace` PC-relative relocations with `pcrel_offset`, `bfd_install_relocation` subtracts `reloc_entry->address` from the instruction bytes via `apply_reloc`.
+This means `md_apply_fix` must pre-add `fx_where + fr_address` to compensate (see the hack in `config/tc-i386.c:md_apply_fix`).
+Failing to do so was the root cause of [PR gas/26263](https://sourceware.org/bugzilla/show_bug.cgi?id=26263): `R_386_PLT32` against a section symbol got an implicit addend of -5 instead of -4.
 
 ELF defines the `obj_frob_file_after_relocs` hook to update group section sizes.
 

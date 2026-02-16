@@ -2,7 +2,7 @@
 layout: post
 title: Removing global state from LLD
 author: MaskRay
-tags: [ccls,llvm]
+tags: [linker,llvm]
 ---
 
 [LLD, the LLVM linker](https://lld.llvm.org/), is a mature and fast linker supporting multiple binary formats (ELF, Mach-O, PE/COFF, WebAssembly).

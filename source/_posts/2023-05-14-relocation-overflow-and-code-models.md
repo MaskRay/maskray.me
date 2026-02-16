@@ -78,7 +78,7 @@ The more frequent occurrences of overflows involve the following categories (whe
 
 * `.text <-> .rodata`
 * `.eh_frame -> .data.rel.local`: `.eh_frame` has `R_X86_64_PC32` relocation referencing `DW.ref.__gxx_personality_v0` even in `-mcmodel=large` output.
-* `.eh_frame_hdr -> .text`: GNU ld and ld.lld only support 32-bit offsets (`table_enc = DW_EH_PE_datarel | DW_EH_PE_sdata4;`) as of Dec 2025.
+* `.eh_frame_hdr -> .text`: GNU ld and ld.lld only support 32-bit offsets (`table_enc = DW_EH_PE_datarel | DW_EH_PE_sdata4;`) as of Dec 2025. ([GNU ld feature request](https://sourceware.org/PR33864))
 * `.text <-> .data/.bss`
 * `.rodata <-> .data/.bss`
 

@@ -2,7 +2,7 @@
 layout: post
 title: Build glibc with LLD 13
 author: MaskRay
-tags: [binutils,glibc,linker]
+tags: [binutils,glibc,linker,llvm]
 ---
 
 LLD is the LLVM linker.

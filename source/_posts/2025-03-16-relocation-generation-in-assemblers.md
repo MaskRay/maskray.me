@@ -111,7 +111,7 @@ The assembler's evaluation of fixups leads to one of three outcomes:
   + Generates an appropriate relocation (offset, type, symbol, addend).
   + For targets that use RELA, usually zeros out the bits in the instruction field that will be modified by the linker.
   + For targets that use REL, leave the addend in the instruction field.
-  + If the referenced symbol is defined and local, and the relocation type is not in exceptions (gas `tc_fix_adjustable`), the relocation references the section symbol instead of the local symbol.
+  + If the referenced symbol is defined and local, and the relocation type is not in exceptions (gas `tc_fix_adjustable`), the relocation references the section symbol instead of the local symbol. See [Section symbol conversion](#section-symbol-conversion) for details and caveats.
 
 Fixup resolution depends on the fixup type:
 
@@ -119,12 +119,65 @@ Fixup resolution depends on the fixup type:
 * `relocation_specifier(S + A)` style fixups resolve when `S` refers to an absolute symbol.
 * Other fixups, including TLS and GOT related ones, remain unresolved.
 
-For ELF targets, if a non-TLS relocation operation references the symbol itself `S` (not `GDAT`), it may be adjusted to reference the section symbol instead.
+For ELF targets, if a non-TLS relocation operation references the symbol itself `S` (not `GDAT`), it may be adjusted to reference the section symbol instead (see below).
 
 If you are interested in relocation representations in different object file formats, please check out my post [Exploring object file formats](/blog/2024-01-14-exploring-object-file-formats).
 
 If an equated symbol `sym` is resolved relative to a section, relocations are generated against `sym`.
 Otherwise, if it resolves to a constant or an undefined symbol, relocations are generated against that constant or undefined symbol.
+
+### Section symbol adjustment
+
+When the assembler generates an unresolved fixup for a local symbol, it can convert the relocation to reference the section symbol (`STT_SECTION`) instead, folding the original symbol's offset within the section into the addend.
+This allows the original local symbol to be omitted from `.symtab`.
+The tradeoff is that the `STT_SECTION` symbol itself must be present, so the conversion saves `.symtab` entries only when a section has more than one local symbol referenced by relocations.
+This is common in practice:
+
+* Text sections often contain labels for jump targets or C++ exception handling.
+* DWARF `.debug_*` sections contain labels referenced by other `.debug_*` sections.
+* `SHF_STRINGS` sections (`.rodata.str1.1`, `.debug_str`, `.debug_line_str`) have a label for each string literal.
+
+Not all relocations are eligible for this conversion.
+PLT-generating and GOT-generating relocations, for example, may require dynamic relocations where the symbol identity is significant, so they must reference the original symbol.
+In GNU Assembler, the backend hook `tc_fix_adjustable` controls which relocation types are excluded from the conversion.
+
+While TLS relocations could be adjusted, lld/ELF does not support TLS relocations against section symbols.
+
+Relocations referencing symbols within `SHF_MERGE` sections also require extra care, because the linker may rearrange or deduplicate content within these sections.
+On most architectures, an absolute (`S + A`) or PC-relative (`S + A - P`) relocation pointing to a `SHF_MERGE` section can safely be converted when the addend is zero, since the relocation still refers to the exact start of a merge piece.
+
+On x86-64, however, a PC-relative reference to a mergeable string can produce a non-zero addend.
+For example, `int foo(int b) { return "abcdef"[b]; }` compiles to:
+
+```asm
+leaq    .LC0(%rip), %rax
+# R_X86_64_PC32          .LC0 - 4
+```
+
+The `R_X86_64_PC32` relocation type uses the end of the instruction as the PC reference point, so the addend includes a -4 adjustment:
+
+If this relocation were converted to reference the section symbol, the addend -4 would point into a different merge piece or before the section entirely.
+After the linker's merge section optimization, the byte at that offset may no longer correspond to the same byte in the original relocatable file.
+Therefore, GAS's x86-64 port disables the `STT_SECTION` conversion when the relocation references a `SHF_MERGE` section with a non-zero addend.
+
+RISC-V applies the same rule for a related reason: linker relaxation can change distances between symbols, so an addend that appears safe at assembly time may become incorrect after relaxation.
+The current implementation retains `.L.str` and `.L.str1` are kept in `.symtab` regardless of `-mrelax`/`-mno-relax`.
+
+```asm
+.section        .rodata.str1.1,"aMS",@progbits,1
+.L.str:
+.asciz  "abcdef"
+
+.section .rodata,"a"
+.L.str1:
+.asciz "a"
+
+.data
+.long .L.str    # can convert: addend would be 0
+.long .L.str1   # can convert: non-SHF_MERGE section
+```
+
+Binutils feature request: <https://sourceware.org/bugzilla/show_bug.cgi?id=33885>
 
 ### Fixup overflow check
 

@@ -2,7 +2,7 @@
 layout: post
 title: -march=, -mcpu=, and -mtune=
 author: MaskRay
-tags: [gcc]
+tags: [clang,gcc]
 ---
 
 Updated in 2025-05.

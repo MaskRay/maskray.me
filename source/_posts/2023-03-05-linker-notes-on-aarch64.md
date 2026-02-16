@@ -199,7 +199,25 @@ In many situations we don't need the long code sequence (`ldr/br` or `adrp/add/b
 
 ### BTI thunks
 
-Range extension thunks perform an indirect branch. If the branch destination does not start with a BTI compatible instruction.
+Long range thunks use indirect branches (`br x16`).
+When BTI is enabled, indirect branches must land on a BTI-compatible instruction (`bti c`, `bti j`, `bti jc`, `paciasp`, or `pacibsp`).
+GCC may elide the BTI instruction at function entry when it can prove there are no indirect branches from outside the translation unit.
+A static linker is responsible for generating a landing pad when the target does not have a BTI.
+
+When the output sets `GNU_PROPERTY_AARCH64_FEATURE_1_BTI` and a long range thunk targets a function without a BTI-compatible instruction, ld.lld ([since 2024-10](https://github.com/llvm/llvm-project/commit/c4d9cd8b747cb399a61dd987eb95ad518eb15448)) generates a landing pad thunk (`AArch64BTILandingPadThunk`) near the destination:
+```asm
+<__AArch64BTIThunk_fn>:
+  bti  c
+  b    fn       // Can be elided if the landing pad immediately precedes fn
+<fn>:
+  ...
+```
+
+The `b` instruction is elided when the landing pad can be placed so that control flow falls through to the destination, which is common with `-ffunction-sections`.
+
+Short range thunks use direct branches (`b`/`bl`) and do not need landing pads.
+A destination needs at most one landing pad, shared across all callers.
+PLT entries already start with `bti c`, so they do not need landing pads either.
 
 ## `--fix-cortex-a53-843419`
 

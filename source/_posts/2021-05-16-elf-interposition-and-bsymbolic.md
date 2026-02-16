@@ -213,7 +213,7 @@ Personally I think `-Bsymbolic` claims most of the direct binding benefits.
 
 As a data point, when building the Linux kernel's x86_64 defconfig with a `clang -fPIC` built clang, my build is 15% faster if I add `-Bsymbolic-functions` to `libLLVM.so` and `libclang-cpp.so`.
 I cannot tell the performance difference with a mostly statically linked PIE clang.
-From llvm-project 13.0.0 onwards, the build system uses `-Bsymbolic-functions` by default.
+From llvm-project 13.0.0 onwards, the build system [uses `-Bsymbolic-functions` by default](https://reviews.llvm.org/D102090).
 
 However, in practice, deployment of `-Bsymbolic` may run into pointer equality problems.
 We will discuss variables and functions separately.

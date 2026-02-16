@@ -2,7 +2,7 @@
 layout: post
 title: Metadata sections, COMDAT and SHF_LINK_ORDER
 author: MaskRay
-tags: [llvm]
+tags: [linker,llvm]
 ---
 
 Updated in 2025-09.

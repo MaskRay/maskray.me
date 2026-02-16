@@ -2,7 +2,7 @@
 layout: post
 title: Segment tree
 author: MaskRay
-tags: [algorithm]
+tags: [algorithm,data structure]
 ---
 
 In research papers, a segment tree refers to a tree data structure allowing retrieving a list of segments which contain the given point.

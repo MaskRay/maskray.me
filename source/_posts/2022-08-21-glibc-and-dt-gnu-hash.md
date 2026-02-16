@@ -5,6 +5,8 @@ author: MaskRay
 tags: [glibc]
 ---
 
+Updated in 2026-02.
+
 tl;dr "Easy Anti-Cheat"'s incompatibility with glibc 2.36 provides shared objects (`libc.so.6`, `ld-linux-x86_64.so.2`) is an instance of Hyrum's law.
 
 * On 2022-08-02 glibc 2.36 was [released](https://sourceware.org/pipermail/libc-alpha/2022-August/141193.html).
@@ -66,6 +68,11 @@ Ali Bahrami's [The Cost Of ELF Symbol Hashing](http://www.linker-aliens.org/blog
 
 The bloom filter size is configurable. In [ld.lld's setting](https://reviews.llvm.org/D42204), the produced `DT_GNU_HASH` is almost always smaller than `DT_HASH`.
 If something like Solaris direct bindings is leveraged which mostly eliminates unsuccessful symbol lookup, we can make the bloom filter size to 1 to remove the overhead.
+
+A 2025 [musl patch](https://www.openwall.com/lists/musl/2025/12/06/5) exploits the fact when a dynamic relocation references a defined symbol, the hash is already stored in the GNU hash table.
+The challenge is that `DT_GNU_HASH` only stores 31 bits (the LSB is cleared for chain termination).
+The missing bit is recovered by checking which of two candidate hashes (differing only in bit 0) places the symbol index in the correct bucket chain.
+This avoids recomputing hashes for symbol names.
 
 Nowadays `DT_GNU_HASH` is pretty much universal among ELF operating systems.
 

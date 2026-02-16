@@ -2,7 +2,7 @@
 layout: post
 title: C++ standard library ABI compatibility
 author: MaskRay
-tags: [gcc,linker]
+tags: [c++,gcc]
 ---
 
 Updated in 2023-11.

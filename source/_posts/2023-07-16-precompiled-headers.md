@@ -2,7 +2,7 @@
 layout: post
 title: Precompiled headers
 author: MaskRay
-tags: [binutils,linker,llvm]
+tags: [clang,llvm]
 ---
 
 C/C++ projects can benefit from using precompiled headers to improve compile time.

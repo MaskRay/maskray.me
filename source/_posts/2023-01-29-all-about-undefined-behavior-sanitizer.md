@@ -271,6 +271,27 @@ TRAP(12) at 0xaaaaea87eb48, possibly UBSan error
 
 TODO: [arm64: Support Clang UBSAN trap codes for better reporting](https://lore.kernel.org/r/20230203173946.gonna.972-kees@kernel.org)
 
+### Loop mode
+
+In 2026-02, `-fsanitize-trap-loop` was added as an alternative to trap mode.
+When a UBSan or CFI check fails in trapping mode, this option causes the program to spin in an infinite loop instead of executing a trap instruction.
+
+```sh
+clang -fsanitize=undefined -fsanitize-trap=all -fsanitize-trap-loop a.c
+```
+
+Instead of emitting `llvm.ubsantrap`, Clang emits a call to the `llvm.cond.loop` intrinsic, which lowers to a conditional branch that branches to itself.
+This approach has two advantages:
+
+* **Performance**: Conditional branching in an infinite loop has been experimentally determined to be executed more efficiently (when the branch is not taken) than a conditional branch to a trap instruction on AMD and older Intel microarchitectures.
+* **Code size**: Avoids the need to emit a trap instruction and possibly a long branch instruction.
+
+On i386 and x86_64, the loop is guaranteed to consist of a single 2-byte short conditional branch instruction that branches to itself.
+Specifically, the first byte will be between 0x70 and 0x7F (Jcc rel8), and the second byte will be 0xFE (-2, i.e., branch to itself).
+
+This behavior can be used as-is, but it is also designed to work with an interrupt handler or other introspection mechanism that detects that the program is stuck in such an infinite loop and terminates the program.
+The RFC for this feature: <https://discourse.llvm.org/t/rfc-optimizing-conditional-traps/89456>
+
 ## Together with other sanitizers
 
 UBSan can be used together with many other sanitizers.

@@ -2,7 +2,7 @@
 layout: post
 title: Clang -Wunused-command-line-argument
 author: MaskRay
-tags: [llvm]
+tags: [clang,llvm]
 ---
 
 clangDriver is the library implementing the compiler driver for Clang.

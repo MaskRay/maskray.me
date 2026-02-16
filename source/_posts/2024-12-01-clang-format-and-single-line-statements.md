@@ -2,7 +2,7 @@
 layout: post
 title: clang-format and single-line statements
 author: MaskRay
-tags: [clang-format,cpp]
+tags: [clang-format,c++]
 ---
 
 The Google C++ Style is widely adopted by projects. It contains a brace omission guideline in [Looping and branching statements](https://google.github.io/styleguide/cppguide.html#Formatting_Looping_Branching):

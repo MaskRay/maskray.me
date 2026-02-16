@@ -334,6 +334,8 @@ lgf     %r1, 0(%r1,%r7)      # r1 = *(a@NTPOFF + TP) = a
 Optimizing the code sequence to local-exec is straightforward: changing the first instruction to `lgfi %r1, a@NTPOFF`.
 However, LGFI (Load Immediate) is part of the extended-immediate facility (September 2005), introduced with System z9 109, unavailable when the ABI was defined.
 
+There is no Initial Exec to Local Exec optimization.
+
 Relocation types `R_390_TLS_IE32`/`R_390_TLS_IE64` for the initial-exec TLS model seem not useful.
 
 ### Local Exec TLS model

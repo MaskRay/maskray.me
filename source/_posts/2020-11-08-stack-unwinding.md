@@ -396,8 +396,10 @@ An unwinder can parse the program headers and look for `PT_GNU_EH_FRAME` to loca
 Clang and GCC usually pass `--eh-frame-hdr` to ld, with the exception that `gcc -static` does not pass `--eh-frame-hdr`.
 The difference is a historical choice related to `__register_frame_info`.
 
-GNU ld and ld.lld only support `eh_frame_ptr_enc = DW_EH_PE_pcrel | DW_EH_PE_sdata4;` (PC-relative `int32_t`), `fde_count_enc = DW_EH_PE_udata4;` (`uint32_t`), and `table_enc = DW_EH_PE_datarel | DW_EH_PE_sdata4;` (`.eh_frame_hdr`-relative `int32_t`).
+GNU ld only supports `eh_frame_ptr_enc = DW_EH_PE_pcrel | DW_EH_PE_sdata4;` (PC-relative `int32_t`), `fde_count_enc = DW_EH_PE_udata4;` (`uint32_t`), and `table_enc = DW_EH_PE_datarel | DW_EH_PE_sdata4;` (`.eh_frame_hdr`-relative `int32_t`).
 (GNU ld also supports `DW_EH_PE_omit` when there is no FDE.)
+
+ld.lld 23 supports `DW_EH_PE_sdata8` for `eh_frame_ptr_enc` and `table_enc` when offsets exceed the 32-bit range, enabling large binaries with large code models.
 
 (
 ```poke

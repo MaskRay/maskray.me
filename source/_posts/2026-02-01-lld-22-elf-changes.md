@@ -199,6 +199,16 @@ RISC-V is uniquely fragmented compared to other LLVM backends-x86, AArch64, Powe
 This fragmentation is a direct consequence of RISC-V's open nature and extensibility, but it creates new challenges for upstream toolchain maintainers.
 Accumulated vendor-specific code could become a significant maintenance burden.
 
+## GNU ld compatibility
+
+Large corporate users of lld/ELF don't care about GNU ld compatibility.
+They add features for their own use cases and move on.
+I diligently coordinate with binutils maintainers and file feature requests when appropriate.
+When lld implements a new option or behavior, I often file corresponding GNU ld feature requests to keep the tools aligned.
+
+This coordination work is largely invisible but essential for the broader toolchain ecosystem.
+Users benefit when they can switch between linkers without surprises.
+
 ---
 
 Link: [lld 21 ELF changes](/blog/2025-09-07-lld-21-elf-changes)

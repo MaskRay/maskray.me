@@ -2,7 +2,7 @@
 layout: post
 title: Modified condition/decision coverage (MC/DC) and compiler implementations
 author: MaskRay
-tags: [linker]
+tags: [gcc,llvm]
 ---
 
 Key metrics for code coverage include:

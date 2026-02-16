@@ -2,7 +2,7 @@
 layout: post
 title: Extract an archive member to satisfy a DSO undef
 author: MaskRay
-tags: [binutils,llvm]
+tags: [binutils,linker,llvm]
 ---
 
 In ELF linkers, undefined symbols from DSO participate in symbol resolution, just like undef from .o.

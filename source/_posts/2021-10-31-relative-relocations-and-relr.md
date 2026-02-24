@@ -60,7 +60,10 @@ else
 The linker can produce an `R_*_RELATIVE` relocation in some other circumstances, but they are rare, e.g. the unfortunate `R_386_GOT32X/R_386_TLS_IE`, PowerPC64's position-independent long branch thunks.
 
 Some architectures have `R_*_RELATIVE` variants.
-On x86-32 (ILP32), `R_X86_64_RELATIVE` applies to a word32 location while `R_X86_64_RELATIVE64` applies to a word64 location.
+On x86-64 ILP32 (x32), `R_X86_64_RELATIVE` applies to a word32 location while `R_X86_64_RELATIVE64` applies to a word64 location.
+x32 uses ELFCLASS32, so the dynamic linker's `ElfW(Addr)` is 32-bit and `R_X86_64_RELATIVE` writes 4 bytes.
+However, x32 code can use `.quad label` (which produces `R_X86_64_64`), creating 8-byte data slots that need runtime base adjustment.
+`R_X86_64_RELATIVE64` tells the dynamic linker to write the full 8 bytes.
 Itanium seems to have multiple relative relocation types for different endianness.
 
 On AArch64, when PAuth is enabled, `R_AARCH64_AUTH_RELATIVE` may be produced instead of `R_AARCH64_RELATIVE`.

@@ -592,18 +592,18 @@ If `ext` is within ±1MiB, the linker can relax this to:
 jal ext
 ```
 
-This is enabled by `R_RISCV_RELAX` relocations that accompany `R_RISCV_CALL` relocations.
+This is enabled by `R_RISCV_RELAX` relocations that accompany `R_RISCV_CALL_PLT` relocations.
 The `R_RISCV_RELAX` relocation signals to the linker that this instruction sequence is a candidate for shrinking.
 
 Example object code before linking:
 ```
 0000000000000006 <foo>:
        6: 97 00 00 00   auipc   ra, 0
-                R_RISCV_CALL ext
+                R_RISCV_CALL_PLT ext
                 R_RISCV_RELAX *ABS*
        a: e7 80 00 00   jalr    ra
        e: 97 00 00 00   auipc   ra, 0
-                R_RISCV_CALL ext
+                R_RISCV_CALL_PLT ext
                 R_RISCV_RELAX *ABS*
       12: e7 80 00 00   jalr    ra
 ```

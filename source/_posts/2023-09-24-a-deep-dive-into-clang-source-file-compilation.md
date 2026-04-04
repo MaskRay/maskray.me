@@ -6,7 +6,7 @@ tags: [llvm,clang]
 toc: true
 ---
 
-Clang is a C/C++ compiler that generates LLVM IR and utilitizes LLVM to generate relocatable object files.
+Clang is a C/C++ compiler that generates LLVM IR and utilizes LLVM to generate relocatable object files.
 Using the classic three-stage compiler structure, the stages can be described as follows:
 ```
 C/C++ =(front end)=> LLVM IR =(middle end)=> LLVM IR (optimized) =(back end)=> relocatable object file
@@ -188,8 +188,6 @@ BackendConsumer::HandleTranslationUnit
   EmitBackendOutput
     EmitAssemblyHelper::EmitAssembly
       EmitAssemblyHelper::RunOptimizationPipeline
-        PassBuilder::buildPerModuleDefaultPipeline // There are other build*Pipeline alternatives
-        MPM.run(*TheModule, MAM);
       EmitAssemblyHelper::RunCodegenPipeline
         EmitAssemblyHelper::AddEmitPasses
           LLVMTargetMachine::addPassesToEmitFile
@@ -251,9 +249,75 @@ entry:
 ## Compiler middle end
 
 `EmitAssemblyHelper::RunOptimizationPipeline` creates an LLVM pass manager to schedule the middle-end optimization pipeline.
-This pass manager executes numerous optimization passes and analyses.
+The new pass manager uses a nested structure: `ModulePassManager` → `CGSCCPassManager` (call graph SCCs) → `FunctionPassManager` → `LoopPassManager`.
+Each level provides the appropriate IR unit and analysis results to its passes.
 
-The option `-mllvm -print-pipeline-passes` provides insight into these passes:
+```
+EmitAssemblyHelper::RunOptimizationPipeline
+  PassBuilder::buildPerModuleDefaultPipeline
+    buildModuleSimplificationPipeline
+      invokePipelineEarlySimplificationEPCallbacks
+      IPSCCPPass, GlobalOptPass
+      FunctionPassManager                      # early cleanup
+        SimplifyCFGPass, SROAPass, EarlyCSEPass
+      buildInlinerPipeline                     # ModuleInlinerWrapperPass
+        CGSCCPassManager                       # bottom-up over call graph SCCs
+          InlinerPass
+          PostOrderFunctionAttrsPass           # deduce function attributes
+          buildFunctionSimplificationPipeline  # post-inline cleanup per function
+            SROAPass, EarlyCSEPass, InstCombinePass
+            invokePeepholeEPCallbacks
+            LoopPassManager (LPM1)
+              LoopInstSimplifyPass, LoopSimplifyCFGPass
+              LICMPass, LoopRotatePass, LICMPass
+              SimpleLoopUnswitchPass
+            SimplifyCFGPass, InstCombinePass
+            LoopPassManager (LPM2)
+              LoopIdiomRecognizePass, IndVarSimplifyPass
+              invokeLateLoopOptimizationsEPCallbacks
+              LoopDeletionPass, LoopFullUnrollPass
+              invokeLoopOptimizerEndEPCallbacks
+            SROAPass, GVNPass, SCCPPass, BDCEPass, InstCombinePass
+            invokePeepholeEPCallbacks
+            invokeScalarOptimizerLateEPCallbacks
+            ADCEPass, MemCpyOptPass, DSEPass
+            SimplifyCFGPass, InstCombinePass
+          invokeCGSCCOptimizerLateEPCallbacks
+    buildModuleOptimizationPipeline
+      EliminateAvailableExternallyPass
+      invokeOptimizerEarlyEPCallbacks
+      FunctionPassManager
+        LowerConstantIntrinsicsPass
+        invokeVectorizerStartEPCallbacks
+        LoopPassManager
+          LoopRotatePass, LoopDeletionPass
+        addVectorPasses
+          LoopVectorizePass, LoopLoadEliminationPass
+          InstCombinePass, SimplifyCFGPass
+          SLPVectorizerPass, VectorCombinePass
+          InstCombinePass, LoopUnrollPass
+          InstCombinePass, LICMPass
+        invokeVectorizerEndEPCallbacks
+      invokeOptimizerLastEPCallbacks
+      GlobalDCEPass, ConstantMergePass
+```
+
+To get a sense of which passes matter most, we can compile sqlite3 (1051 functions) with `opt -O2 --print-changed` and count how many invocations actually changed the IR.
+
+At the module level, `IPSCCPPass` (interprocedural sparse conditional constant propagation), `GlobalOptPass`, and `DeadArgumentEliminationPass` each fire once and change the IR.
+
+Among function passes (totals across all pipeline instances), the workhorse passes are `SimplifyCFGPass` (2287), `InstCombinePass` (2136), `SROAPass` (1048), and `EarlyCSEPass` (952).
+These appear multiple times in the pipeline and run after every major transformation.
+Other notable passes include `JumpThreadingPass` (444), `CorrelatedValuePropagationPass` (345), `GVNPass` (307), and `SCCPPass` (103).
+
+For loop passes, `LoopRotatePass` (588) and `LICMPass` (501) are the most active, followed by `IndVarSimplifyPass` (332).
+
+In `buildModuleOptimizationPipeline`, `LoopUnrollPass` (316), `LoopVectorizePass` (14), and `SLPVectorizerPass` (10) are infrequent on sqlite3 but can be critical for numerical code.
+
+The inliner pipeline is a CGSCC pass that, for each SCC in bottom-up order, runs the inliner followed by function simplification passes (SROA, InstCombine, GVN, etc.).
+This means `div<int>` is inlined into `foo` during CGSCC traversal, and the post-inline cleanup immediately simplifies the result.
+
+The option `-mllvm -print-pipeline-passes` prints the pipeline structure, and `-Xclang -fdebug-pass-manager` shows passes as they execute:
 ```
 % clang -c -O1 -mllvm -print-pipeline-passes a.c
 annotation2metadata,forceattrs,declare-to-assign,inferattrs,coro-early,...
@@ -279,7 +343,7 @@ entry:
 }
 ```
 
-The most notaceable differences are the following
+The most noticeable differences are the following
 
 * `SROAPass` runs mem2reg and optimizes out many `AllocaInst`s.
 * `InstCombinePass` (`InstCombinerImpl::visitFCmpInst`) replaces `fcmp oeq float %1, %1` with `fcmp ord float %1, 0.000000e+00`, canonicalize NaN testing to `FCmpInst::FCMP_ORD`.
@@ -334,10 +398,10 @@ The official documentation <https://llvm.org/docs/WritingAnLLVMBackend.html#inst
 _2024 LLVM Dev Mtg - A Beginners’ Guide to SelectionDAG_ has a great introduction.
 
 ```
-SectionDAG: normal code path
+SelectionDAG: normal code path
 LLVM IR =(visit)=> SDNode =(DAGCombiner,LegalizeTypes,DAGCombiner,Legalize,DAGCombiner,Select,Schedule)=> MachineInstr
 
-SectionDAG: FastISel (fast but not optimal)
+SelectionDAG: FastISel (fast but not optimal)
 LLVM IR =(FastISel)=> MachineInstr
 ```
 
@@ -390,19 +454,22 @@ The initial DAG may contain types and operations that are not natively supported
 
 #### SelectionDAG concept
 
-TODO
+A SelectionDAG is a directed acyclic graph where each node (`SDNode`) represents an operation (opcode + flags), takes 0 or more operands (`SDUse`), and produces 1 or more results (`SDValue`).
+Each result has a machine value type (`MVT`), e.g. `i32`, `f64`, `v4f32`.
+Operands reference results of other nodes, forming def-use edges.
 
-An EntryToken node represents the dependency on entering the block.
-Each DAG has a root node, usually the terminator instruction.
+An `EntryToken` node represents the start-of-block dependency.
+Each DAG has a root node, usually the terminator instruction (e.g. `ISD::RET`).
 
-Each `SDNode` contains many fields including:
+Beyond data values, two special `MVT` types encode ordering constraints:
 
-* opcode
-* flags
-* 0 or more operands represented by `SDUse`
-* 1 or more results represented by `SDValue`
+* Chain (`ch`) values enforce ordering between side-effecting nodes (loads, stores, calls) while allowing the scheduler to interleave unrelated nodes in between.
+* Glue (`MVT::Glue`) forces two nodes to be scheduled immediately adjacent — no instruction can be inserted between them.
+  A node produces glue as its last result and the consumer takes it as its last operand, forming a linear chain (at most one glue in, one glue out per node).
+  Common uses: `CopyToReg` nodes glued to `CALL`/`RET` (preventing argument register clobbering), and flag-setting instructions glued to flag consumers (e.g. `CMP` → `CMOV` on x86, preventing EFLAGS clobbering).
 
-Chain values represent non-data dependencies.
+In `-debug-only=isel` output, leaf nodes with zero operands (constants, registers) are printed inline with their users in debug dumps.
+Other nodes are printed one per line; single-use nodes are indented under their sole user, while multi-use nodes appear at the top level.
 
 Now, let's take a closer look at our `foo` function.
 
@@ -480,8 +547,8 @@ switch (getTypeAction(ResultVT)) {
 }
 ```
 
-Many actions actually call a hook `CustomLowerNode` befores generic code.
-If the target specifies a Custom action handler attached on the operation with the ilegal type, the custom handler will run instead.
+Many actions actually call a hook `CustomLowerNode` before generic code.
+If the target specifies a Custom action handler attached on the operation with the illegal type, the custom handler will run instead.
 This allows the target-specific code to legalize an operation with its original value type.
 
 In our example, `i1` is an illegal type and the transformed-to type is `i8`.
@@ -539,7 +606,7 @@ SelectionDAG has 17 nodes:
 #### Instruction selection
 
 `DoInstructionSelection` visits DAG nodes in a topological order (root node first; operator selected before operands) and calls `SelectionDAGISel::Select`.
-`Select` replaces most generic `SDNode`s with `MachineSDNode`s (derivied class of `SDNode` with negative `NodeType`), which will be converted to `MachineInstr`.
+`Select` replaces most generic `SDNode`s with `MachineSDNode`s (derived class of `SDNode` with negative `NodeType`), which will be converted to `MachineInstr`.
 Some `SDNode`s (e.g. `CopyFromReg`) remain `SDNode`.
 
 `Select` is derived by targets to perform custom logic and handle over the rest to `SelectCode`.
@@ -555,32 +622,81 @@ In our example,
 * `X86::ADD32rr` is selected for the `ISD::ADD` node.
 * `X86::MOVZX32rr8` is selected for the `ISD::ZERO_EXTEND` node.
 
-#### Instruction scheduling
+#### SelectionDAG instruction scheduling
 
-The instruction scheduler takes DAG nodes and produces a linear sequence of machine instructions.
+After instruction selection, the DAG nodes must be linearized into a sequence of `MachineInstr`s.
+`SelectionDAGISel::CodeGenAndEmitDAG` calls `CreateScheduler` to create a `ScheduleDAGSDNodes` subclass.
+`createDefaultScheduler` picks a scheduler based on the target's scheduling preference (`TargetLowering::getSchedulingPreference`):
 
-This scheduler during instruction selection shares code with the leagcy post register allocation scheduler, `llvm/lib/CodeGen/PostRASchedulerList.cpp`.
+- Most targets enable the machine scheduler (X86, RISC-V, AArch64, etc.) and `createDefaultScheduler` returns `source`, a trivial scheduler that preserves source order, deferring real scheduling to the later `MachineScheduler` pass.
+- `-O0` also uses `source`.
+- For targets without the machine scheduler, the scheduling preference (`TargetLowering::getSchedulingPreference`) selects a `ScheduleDAGRRList` variant: `list-burr` (register pressure), `list-hybrid` (latency vs register pressure), or `list-ilp` (instruction-level parallelism).
 
-(There will be a machine scheduler pass immediately before register allocation and possibly another after register allocation.)
-(Register allocation will introduce spilling code, destroying the schedule.)
+While a simpler `linearize` scheduler exists that just does a topological sort, it cannot handle physical register dependencies.
+The `source` scheduler uses the full `ScheduleDAGRRList` machinery (physical register liveness tracking, backtracking) to ensure correctness when instructions have physical register constraints (e.g. `$eax` for x86 `idiv`), while preferring source order when there is scheduling freedom.
+GlobalISel does not need this step since it operates on `MachineInstr`s directly without an intermediate DAG.
 
-SelectionDAG calls `CreateSchedule` to create a scheduler.
-The default for many targets is a list scheduler (`ScheduleDAGRRList`).
-It simulates execution of the instructionns annd tries to schedule instructions when all operands can be used without stalling the pipeline.
+These can be overridden with `-mllvm -pre-RA-sched=<name>`.
 
-The list scheduler places nodes into units where glued nodes are in the same schedule unit.
-Then, it builds a data dependency graph.
+The `ScheduleDAGRRList` variants perform bottom-up list scheduling: glued nodes are grouped into a single scheduling unit (`SUnit`) and a data dependency graph is built.
 
-depth: max path down to EntryToken
-height: max path down to any terminal node (e.g. RET)
+All glued nodes in a chain are merged into one `SUnit` — the scheduler simply cannot separate them.
 
-The type legalizer (entry: `SelectionDAG::LegalizeTypes`) traverses nodes in a topological order.
+The algorithm starts from the DAG root (e.g. `RET`) and works backward: each iteration pops the highest-priority node from a priority queue and appends it to the schedule, then releases predecessors whose successors have all been scheduled.
+The final sequence is reversed to get the execution order.
+Bottom-up naturally models register pressure — at each step, the live values are exactly those whose uses have been scheduled but whose definitions have not, allowing the priority queue (using Sethi-Ullman numbers) to minimize simultaneously live values.
 
-In the `EmitSchedule` process, `MachineInstr` objects are created from these `MachineSDNode` and regular `SDNode` objects.
+The scheduler tracks physical register liveness: when a node is scheduled, its predecessors' physical register defs become live; when the defining node is later scheduled, those registers are released.
+If scheduling a candidate would clobber a live physical register (checked against all aliases, implicit defs, register masks, and inline asm clobbers), the candidate is deferred to an interference list.
+When all candidates are blocked, `PickNodeToScheduleBottomUp` resolves the conflict with escalating strategies: first, backtrack by unscheduling the node that keeps the register alive and add an artificial ordering edge to prevent recurrence; if backtracking would create a cycle, duplicate the defining node or insert cross-class register copies as a last resort.
 
-Note, another scheduler, machine scheduler, will run immediately before register allocation (`MachineScheduler::runOnMachineFunction`) at -O1 and above.
-Some targets' schedule models (grep `PostRAScheduler`) enable a post-RA scheduler (grep `PostRASchedulerID` annd `PostMachineSchedulerID`) at -O2 and above.
-The legacy post-RA scheduler (`llvm/lib/CodeGen/PostRASchedulerList.cpp`) shares code with the SelectionDAG instruction scheduler.
+`ScheduleDAGSDNodes::EmitSchedule` converts the scheduled `MachineSDNode` and `SDNode` objects into `MachineInstr`s.
+
+### Instruction scheduling
+
+Instruction scheduling and register allocation are conflicting goals.
+Scheduling wants to increase instruction-level parallelism by separating dependent instructions, which increases the number of simultaneously live values (register pressure).
+Register allocation wants to minimize register pressure to avoid spills.
+
+To balance these concerns, LLVM schedules instructions multiple times:
+The pre-RA machine scheduler (`MachineScheduler::runOnMachineFunction`) runs at -O1 and above, immediately before register allocation.
+Some targets also enable a post-RA scheduler (`PostRASchedulerID` or `PostMachineSchedulerID`) at -O2 and above, since register allocation introduces spill/reload code and removes false dependencies (anti and output dependencies on virtual registers), making rescheduling profitable.
+
+#### MachineScheduler
+
+`MachineSchedulerBase::scheduleRegions` iterates over basic blocks and splits each into scheduling regions — contiguous runs of instructions separated by scheduling boundaries (calls, inline assembly, and other instructions identified by `TargetInstrInfo::isSchedulingBoundary`).
+Each region is scheduled independently.
+
+The pre-RA scheduler uses `ScheduleDAGMILive`, which builds a dependency DAG over `MachineInstr`s and tracks register pressure using `RegisterPressureTracker`.
+Its `schedule()` method builds the DAG with register pressure information (`buildDAGWithRegPressure`), finds top and bottom roots, then calls `SchedImpl->pickNode(IsTopNode)` in a loop until the top and bottom frontiers meet.
+
+The default strategy is `GenericScheduler`, which performs bidirectional list scheduling.
+It maintains two `SchedBoundary` zones (top and bottom), each with its own ready queue.
+`pickNodeBidirectional` picks the best candidate from either zone using a hierarchical set of heuristics in `tryCandidate`: bias physical register defs toward their uses, avoid exceeding register pressure limits, avoid stalls on unbuffered resources, keep clustered nodes together, balance critical resource consumption, avoid serializing long latency chains, and fall back to original instruction order.
+
+#### Scheduling models
+
+Both the machine scheduler and the post-RA scheduler rely on **scheduling models** defined in target `.td` files.
+A `SchedMachineModel` describes the processor's pipeline properties, while `ProcResource` and `WriteRes` map instruction operands to pipeline resources and latencies.
+For example, `X86SchedHaswell.td` models the Haswell microarchitecture:
+```tablegen
+def HaswellModel : SchedMachineModel {
+  let IssueWidth = 4;
+  let MicroOpBufferSize = 192; // Based on the reorder buffer.
+  let LoadLatency = 5;
+  let MispredictPenalty = 16;
+}
+def HWPort0 : ProcResource<1>;
+def HWPort1 : ProcResource<1>;
+...
+def HWPort0156: ProcResGroup<[HWPort0, HWPort1, HWPort5, HWPort6]>;
+
+defm : HWWriteResPair<WriteALU,  [HWPort0156], 1>;  // ALU ops: port 0/1/5/6, latency 1
+defm : HWWriteResPair<WriteIMul64, [HWPort1, HWPort6], 4, [1,1], 2>;  // 64-bit mul: latency 4, 2 uops
+```
+
+The scheduler uses these to model resource contention and instruction latencies.
+`-mllvm -debug-only=machine-scheduler` shows the scheduling decisions, and `-mllvm -debug-only=pre-RA-sched` shows the SelectionDAG scheduler. `-mllvm -misched-dump-schedule-trace` prints a cycle-by-cycle resource booking table.
 
 #### FastISel
 

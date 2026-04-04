@@ -372,13 +372,8 @@ The `.reloc` directive creates a relocation with the specified type, location, a
 GNU Assembler has [supported `.incbin`](https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=7e005732aa09aad97c790cab88d294aeed06eada) since 2001-07 (hey, C/C++ `#embed`).
 The review thread mentioned that `.incbin` had been supported by some other assemblers.
 
-[`.weakref alias, target`](https://sourceware.org/pipermail/binutils/2005-October/044471.html) enables the creation of weak aliases without directly modifying the target symbol's binding.
+[`.weakref alias, target`](/blog/2021-04-25-weak-symbol#:~:text=.weakref%20directive) creates a weak alias without directly modifying the target symbol's binding.
 This allows a header file in library A to optionally depend on symbols from library B.
-All relocations using `alias` are redirected to `target`.
-
-When `target` is defined or referenced, the binding of `target` is unaffected (`target` can still be weak if `.weak target` is used); otherwise, `target` is made an undefined weak symbol.
-When the target symbol is defined or referenced, it can retain `STB_GLOBAL` binding to support [archive member extraction](/blog/2021-06-20-symbol-processing#archive-processing).
-GCC's `[[gnu::weakref]]` attribute, as used in runtime library headers like `libgcc/gthr-posix.h`, utilizes this feature.
 
 To support RISC-V linker relaxation, `gcc/config/tc-riscv.c` starts a new fragment after a relaxable instruction.
 
@@ -537,10 +532,12 @@ The SPIR-V target also provides a minimal MCAsmBackend implementation.
 
 ## Symbol name prefixes
 
-`PrivateGlobalPrefix`: Temporary labels that are not saved in the symbol table unless `--save-temp-labels` is specified.
-This corresponds to system-specific local label prefixes in GNU assembler.
+`PrivateGlobalPrefix`: Temporary symbols that are not saved in the symbol table unless `--save-temp-labels` is specified.
+`MCContext::createTempSymbol` and `MCContext::createNamedTempSymbol` prepend this prefix.
+On ELF/Wasm/GOFF, it is `.L`; on XCOFF, `L..`; on Mach-O, `L`.
 
-`PrivateLocalPrefix` marks basic blocks labels.
+`PrivateLabelPrefix` marks basic block labels. `MCContext::createBlockSymbol` prepends this prefix.
+In practice, `PrivateLabelPrefix` equals `PrivateGlobalPrefix` on all targets.
 
 `LinkerPrivateGlobalPrefix` (Mach-O specific: "l") marks a non-temporary symbol that can be used as an atom.
 The symbol is not external and will be discarded during linking.
@@ -549,6 +546,13 @@ For ELF targets, the `MCContext::createLinkerPrivateTempSymbol` function creates
 `.L` as a prefix is better than `L`: `.L` prevents name collision with user-defined symbols.
 Object file formats that use L typically decorate regular symbols with _ to avoid name collision, which causes uglier names.
 ([BPF doesn't use `.L`](https://github.com/llvm/llvm-project/pull/95103))
+
+The LLVM terminology ("Private") is misleading.
+These symbols are not related to ELF visibility (`STV_DEFAULT`/`STV_HIDDEN`); they are assembler-internal symbols stripped before the object file.
+"Global" in `PrivateGlobalPrefix` is also confusing — these symbols are the opposite of global in the ELF sense.
+GNU assembler documentation historically called `.L`-prefixed symbols "local symbols", which conflated with ELF `STB_LOCAL` binding.
+A [2026 GNU as documentation patch](https://sourceware.org/pipermail/binutils/2026-February/148305.html) renames the concept to "internal symbols" and "numeric local labels" (for `N:`/`Nb`/`Nf`).
+LLVM could benefit from a similar rename (e.g., `InternalSymbolPrefix`, `InternalLabelPrefix`, `LinkerInternalPrefix`) to reduce confusion.
 
 ### Workflow
 

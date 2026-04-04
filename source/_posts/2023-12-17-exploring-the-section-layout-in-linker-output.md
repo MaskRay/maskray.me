@@ -5,6 +5,8 @@ author: MaskRay
 tags: [llvm,linker,linux]
 ---
 
+Updated in 2026-03.
+
 This article describes section layout and its interaction with dynamic loaders and huge pages.
 
 Let's begin with a Linux x86-64 example involving global variables exhibiting various properties such as read-only versus writable, zero-initialized versus non-zero, and more.
@@ -64,7 +66,7 @@ We can see that these functions and global variables are placed in different sec
 TODO I may write more about how linkers layout sections and segments. <!-- sh_offset = sh_addr (mod sh_align) for non-NOBITS sections -->
 
 Anyhow, the linker will place `.data` and `.bss` in the same `PT_LOAD` program header (segment) and the rest into different `PT_LOAD` segments.
-(There are some nuances. If you use GNU ld's [`-z noseparate-code`](/blog/2020-11-15-explain-gnu-linker-options#z-noseparate-code) or lld's [`--no-rosegment`](/blog/2020-11-15-explain-gnu-linker-options#no-rosegment), `.rodata` and `.text` will be placed in the same `PT_LOAD` segment.)
+(There are some nuances. If you use `-z noseparate-code`, lld's [`--no-rosegment`](/blog/2020-11-15-explain-gnu-linker-options#no-rosegment), or GNU ld's `--rosegment`, `.rodata` and `.text` will be placed in the same `PT_LOAD` segment.)
 
 The `PT_LOAD` segments have different flags (`p_flags`): `PF_R`, `PF_R|PF_X`, `PF_R|PF_W`.
 Subsequently, the dynamic loader, also known as the dynamic linker, will invoke `mmap` to map the file into memory.
@@ -105,6 +107,14 @@ The output file will consume less address space at run-time.
       0x555555555000     0x555555556000     0x1000        0x0  r--p   /tmp/c/a
       0x555555556000     0x555555557000     0x1000     0x1000  rw-p   /tmp/c/a
 ```
+
+GNU ld has implemented `--rosegment`/`--no-rosegment` as well (both default to off), but the semantics differ from lld due to different section ordering.
+
+lld places `.rodata` **before** `.text`, so `--no-rosegment` merges the leading R segment into R+X naturally.
+GNU ld places `.rodata` **after** `.text` (in a separate R segment), so `--rosegment` moves `.rodata` before `.text` and merges them into R+X.
+In effect, lld's `--no-rosegment` and GNU ld's `--rosegment` achieve the same result (fewer segments), but from opposite defaults.
+
+Note that GNU ld's `--no-rosegment` combined with `-z separate-code` has no visible effect — the output remains 4 segments (R, R+X, R, RW) because `.rodata` sits after `.text` and cannot be merged back.
 
 ## MAXPAGESIZE
 
@@ -502,8 +512,12 @@ madvise(MADV_COLLAPSE): 0
 7ffe69edf000-7ffe69f00000 rw-p 00000000 00:00 0                          [stack]
 ```
 
-In `-z noseparate-code` layouts, the file content starts somewhere at the first page, potentially wasting half a huge page on unrelated content.
-Switching to `-z separate-code` allows reclaiming the benefits of the half huge page but increases the file size.
+In `-z noseparate-code` layouts with `--rosegment` (lld default, keeping R and R+X separate), the R+X segment starts at a non-huge-page-aligned offset.
+The Linux kernel THP implementation does not support such misaligned segments.
+Using `--no-rosegment` (lld) to merge R and R+X into a single segment starting at offset 0 avoids this problem.
+
+In `-z noseparate-code` layouts, if the goal is to place only code — not rodata — into huge pages, the code sits in the middle of a page, potentially wasting half a huge page on rodata.
+Switching to `-z separate-code` reclaims the benefits of that half huge page but increases the file size.
 Balancing these aspects poses a challenge.
 One potential solution is using `fallocate(FALLOC_FL_PUNCH_HOLE)`, which introduces complexity into the linker.
 However, this approach feels like a workaround to address a kernel limitation.

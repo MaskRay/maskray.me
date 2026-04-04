@@ -5,6 +5,8 @@ author: MaskRay
 tags: [binutils,linker,llvm]
 ---
 
+Updated in 2026-02.
+
 ## .a archives
 
 Unix-like systems represent static libraries as `.a` archives.
@@ -113,11 +115,13 @@ It can also be argued that a regular archive may be slower because a on-disk obj
 A thin archive has a very compact representation: a header, minimum metadata (mainly the filename) for each member, and a symbol table.
 It may be attempted to remove the symbol table to decrease the size further.
 When creating an archive, ar/llvm-ar support the modifier `S` to skip the symbol table.
-However, GNU ld does not accept an archive without a symbol table (index):
+GNU ld used to not accept an archive without a symbol table (index):
 ```text
 % ld.bfd a.o a.a
 ld.bfd: a.a: error adding symbols: archive has no index; run ranlib to add one
 ```
+
+Since 2026-02, GNU ld accepts archives without a symbol table (`--link-mapless`, enabled by default; use `--no-link-mapless` to restore the old behavior).
 
 ld.lld used to have a similar diagnostic `archive has no index; run ranlib to add one` unless all members were LLVM bitcode files.
 lld 14.0.0 will include my change ([D117284](https://reviews.llvm.org/D117284)) which parse an archive without a symbol table using the `--start-lib` code path (see below).
@@ -125,6 +129,7 @@ lld 14.0.0 will include my change ([D117284](https://reviews.llvm.org/D117284)) 
 Normally ld.lld tends to be strict and catch user errors. We need to think of ecosystem influence when dropping a diagnostic.
 Here, the influence is that users may get addicted to the behavior and build archives not working with GNU ld and gold.
 I think this addiction is acceptable, since the repair is straightforward (running ranlib on the archive).
+As of 2026-02, GNU ld also accepts archives without a symbol table, so this is no longer a practical concern.
 
 ## `--start-lib`
 
@@ -144,7 +149,7 @@ Cons:
 * The linker command line built by the compiler driver is longer.
 
 Now let's reflect on the archive symbol table.
-Due to the `archive has no index; run ranlib to add one` GNU ld diagnostic, every archive needs a symbol table.
+Due to the `archive has no index; run ranlib to add one` GNU ld diagnostic (removed since 2026-02), every archive used to need a symbol table.
 To build the symbol table, for a member of an ELF relocatable object file, ar needs to parse its symbol table and find the non-local definitions.
 For a member of a GCC LTO object file or an LLVM bitcode file, ar needs a plugin to parse the symbol table.
 A build system mistake is to mix LTO files and an ELF relocatable object file in one archive.
@@ -153,6 +158,7 @@ The archive still has a symbol table, but the definition list is incomplete, whi
 `--start-lib` and `--end-lib` allow us to stop wasting time/space for the archive symbol table and worrying about the LTO case.
 
 I created a feature request for GNU ld in 2019: [ld: Support --start-lib --end-lib](https://sourceware.org/bugzilla/show_bug.cgi?id=24600).
+Since 2026-02, GNU ld supports `--start-lib` and `--end-lib`.
 
 ### ld64.lld
 
@@ -212,8 +218,6 @@ While playing with this, I have found that llvm-ranlib may convert a thin archiv
 [D117443](https://reviews.llvm.org/D117443) will fix it.
 
 Many ar implementations ensure the symbol table is up-to-date automatically, no need for a separate ranlib command.
-
-If you do not care about GNU ld compatibility, you can use `-DCMAKE_CXX_ARCHIVE_CREATE='path/to/llvm-ar crS --thin <TARGET> <OBJECTS>' -DCMAKE_CXX_ARCHIVE_FINISH=:` with LLD 14 or above.
 
 ## Deterministic mode
 

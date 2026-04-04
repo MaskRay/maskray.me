@@ -234,6 +234,16 @@ There is no `.postfini_array`.
 Most ld.so implementations support `DT_PREINIT_ARRAY`.
 musl does not support the feature. See [add preinit_array support](https://www.openwall.com/lists/musl/2016/05/17/2).
 
+compiler-rt sanitizers are the primary users of `.preinit_array`.
+Sanitizers like AddressSanitizer and ThreadSanitizer intercept libc functions (`sigaction`, `malloc`, `pthread_create`, etc.) and need shadow memory set up before any intercepted call.
+A shared library's `.init`/`.init_array` constructor may call these functions (e.g., OpenSSL), so initializing via `.init_array` is too late.
+`.preinit_array` is the only mechanism that guarantees execution before all DSO initializers.
+
+When `SANITIZER_CAN_USE_PREINIT_ARRAY` is true (Linux, not PIC), sanitizers also skip the lazy initialization check on every intercepted call, since the runtime is guaranteed to be initialized.
+For example, ThreadSanitizer's `LazyInitialize` compiles to nothing, eliminating a branch on a very hot path.
+
+AddressSanitizer was the first to adopt `.preinit_array` in 2011, followed by LeakSanitizer (2013), DataFlowSanitizer (2013), ThreadSanitizer (2016), UndefinedBehaviorSanitizer (2018), and others.
+
 ## Runtime behavior
 
 The generic ABI says:

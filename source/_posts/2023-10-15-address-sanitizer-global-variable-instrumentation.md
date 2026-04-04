@@ -424,6 +424,20 @@ void __asan_after_dynamic_init() {
 }
 ```
 
+**O(N) optimization**
+
+The `__asan_before_dynamic_init`/`__asan_after_dynamic_init` pair is called for each TU.
+Since `__asan_after_dynamic_init` unpoisons all globals, the overall complexity is O(N^2) where N is the number of globals or TUs.
+
+[#101837](https://github.com/llvm/llvm-project/pull/101837) optimizes this to O(N) on `SANITIZER_CAN_USE_PREINIT_ARRAY` platforms (Linux, not shared library) when using lld.
+`__asan_before_dynamic_init` already performs incremental poisoning (only poisons the previous TU's globals and unpoisons the current TU's, [#101597](https://github.com/llvm/llvm-project/pull/101597)).
+The key idea is to suppress all intermediate `__asan_after_dynamic_init` calls (`allow_after_dynamic_init` starts as false) and run a single final unpoison via `UnpoisonBeforeMain`, registered in `.init_array.65537`.
+
+lld sorts `.init_array` subsections by the numeric suffix, so priority 65537 (greater than the default 65535) ensures `UnpoisonBeforeMain` runs after all normal constructors.
+GNU ld does not sort `.init_array.65537` this way, so the optimization degrades back to O(N^2) while maintaining correctness.
+
+---
+
 The check is applicable when the accessed variable resides in another linked unit.
 
 For example, consider that `b.so` consists of `b0.cc` and `b1.cc`, while the main executable `a` contains `a0.cc` and `a1.cc`.

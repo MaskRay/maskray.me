@@ -633,6 +633,43 @@ typedef struct
 
 On x86-64, `TLS_DTV_AT_TP` is 0. `struct pthread` is at `fs:0`. `dtv` is at `fs:8`.
 
+## Debugger: locating TLS variables
+
+The compiler encodes a TLS variable's location using `DW_OP_form_tls_address` (opcode `0x9b`), preceded by the variable's DTPOFF — its offset from the start of the module's TLS block.
+The DTPOFF value is encoded by a relocation, resolved by the linker.
+
+When GDB evaluates `DW_OP_form_tls_address`, it has two pieces: (1) which module the variable lives in (via its `link_map` address) and (2) the DTPOFF offset, and must compute the runtime address for the current thread.
+
+### libthread_db path
+
+GDB's primary path on Linux is through `libthread_db`, a helper library shipped with glibc (`nptl_db/`). GDB (`linux-thread-db.c`) calls:
+
+```c
+td_thr_tls_get_addr(thread_handle, link_map_addr, dtpoff, &result_addr)
+```
+
+The implementation (`nptl_db/td_thr_tls_get_addr.c`) reads `link_map.l_tls_modid` from the debugged process to get the module's DTV index, then calls `td_thr_tlsbase()` (`nptl_db/td_thr_tlsbase.c`), which:
+
+* For dynamic TLS: reads `pthread.dtvp` (the thread's DTV pointer), checks `dtv[0].counter` (DTV generation) against the module's required generation in `_dl_tls_dtv_slotinfo_list`, and returns `dtv[modid].pointer.val`.
+* For static TLS (loaded at startup): computes the address from the thread pointer and `link_map.l_tls_offset`.
+
+The structure metadata (field offsets of internal glibc structs) is published via `nptl_db/structs.def`, so GDB can read them without glibc debug symbols.
+
+### Internal fallback
+
+[Commit 85e1d8f93df6](https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=85e1d8f93df69a8e39ae9965a8a1cf02546e92a7) added an internal TLS resolution path in `gdb/svr4-tls-tdep.c`, used when `libthread_db` is unavailable or the maintenance setting `force-internal-tls-address-lookup` is enabled.
+GDB directly navigates the TLS data structures:
+
+1. **Detect the C library**: checks the ELF interpreter path for `/ld-musl-` (musl), otherwise assumes glibc.
+2. **Compute the module ID**: GDB tracks `link_map` addresses as shared libraries load and unload (via solib observers) and assigns module IDs itself, mirroring the dynamic linker.
+3. **Find the DTV**:
+   - **x86-64**: The thread pointer is `fsbase`. Both glibc and musl lay out `struct pthread` at `fsbase`, with `dtv` as the second pointer-sized field (glibc: `tcbhead_t.dtv`; musl: `struct pthread.dtv`, since `TLS_ABOVE_TP` is not defined for x86-64). So `dtv_ptr_addr = fsbase + sizeof(pointer)`.
+   - **RISC-V**: The thread pointer is `tp`. The layout differs by libc:
+     - glibc's `tcbhead_t = {dtv, private}` sits before `tp`: `dtv_ptr_addr = tp - 2*sizeof(pointer)`.
+     - musl defines `TLS_ABOVE_TP`, so `dtv` is the **last field** of `struct pthread` (Part 3 of `pthread_impl.h`), and `tp` points just past the end of the struct: `dtv_ptr_addr = tp - sizeof(pointer)`.
+4. **Index the DTV**: reads `dtv[modid]`. Each DTV entry is two pointers wide in glibc, one pointer in musl.
+5. **Apply `DTP_OFFSET`** (musl only): musl biases DTV entries by `DTP_OFFSET` (e.g. `0x800` on RISC-V, from `arch/riscv64/pthread_arch.h`). The final address is `dtv[modid] - DTP_OFFSET + dtpoff`.
+
 ## Async-signal-safe TLS
 
 C11 7.14.1 Specify signal handling says:

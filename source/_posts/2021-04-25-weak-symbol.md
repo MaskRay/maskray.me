@@ -5,7 +5,7 @@ author: MaskRay
 tags: [binutils,linker]
 ---
 
-Updated in 2023-10.
+Updated in 2026-03.
 
 ## C/C++
 
@@ -173,6 +173,35 @@ PE-COFF can emulate this feature with an `IMAGE_SYM_CLASS_WEAK_EXTERNAL` `IMAGE_
 
 If a weak references turns out to be undefined, MinGW's `.refptr.` mechanism can ensure the value is 0.
 
+### `.weakref` directive
+
+GNU assembler's [`.weakref alias, target`](https://sourceware.org/pipermail/binutils/2005-October/044471.html) creates a weak alias without directly modifying the target symbol's binding.
+All relocations using `alias` are redirected to `target`.
+
+* If `target` is defined or directly referenced, the binding of `target` is unaffected (`target` can still be weak if `.weak target` is used). Retaining `STB_GLOBAL` supports [archive member extraction](/blog/2021-06-20-symbol-processing#archive-processing).
+* If `target` is only referenced through the alias, `target` becomes an undefined weak symbol.
+
+```asm
+.weakref foo, bar
+call foo       # relocation references bar; bar becomes WEAK UNDEF
+
+.weakref foo2, bar2
+call foo2      # relocation references bar2; bar2 remains GLOBAL UNDEF
+call bar2
+```
+
+The LLVM integrated assembler's `.weakref` handling had several issues (unreferenced `.weakref` creating undefined targets, crashes) that I [reworked in 2025-05](https://github.com/llvm/llvm-project/commit/95756e67c230c231c616a9aeabc2eea1e2831829).
+
+GCC's `[[gnu::weakref]]` attribute, as used in runtime library headers like `libgcc/gthr-posix.h`, utilizes this feature.
+
+```c
+// Equivalent to: .weakref __gthrw_pthread_create, pthread_create
+// If pthread_create is not otherwise referenced, it becomes a weak reference,
+// avoiding pulling in pthread archive members unnecessarily.
+static __typeof(pthread_create) __gthrw_pthread_create
+  __attribute__((__weakref__("pthread_create"), __copy__(pthread_create)));
+```
+
 ### Weak references and shared objects
 
 A weak reference can be satisfied by a shared object definition.
@@ -281,7 +310,7 @@ For `-no-pie`, there is no dynamic relocation. The behaviors are:
 
 The aarch64 ABI says
 
-> On platforms that do not support dynamic pre-emption of symbols, an unresolved weak reference to a symbol relocated by R_<CLS>_CALL26 shall be treated as a jump to the next instruction (the call becomes a no-op). The behaviour of R_<CLS>_JUMP26 and R_<CLS>_PLT32 in these conditions is not specified by this standard.
+> On platforms that do not support dynamic pre-emption of symbols, an unresolved weak reference to a symbol relocated by `R_<CLS>_CALL26` shall be treated as a jump to the next instruction (the call becomes a no-op). The behaviour of `R_<CLS>_JUMP26` and `R_<CLS>_PLT32` in these conditions is not specified by this standard.
 
 To the best of my knowledge, on other ABIs the behaviors are mostly unspecified.
 
@@ -305,10 +334,15 @@ ld.lld generates `R_*_GLOB_DAT` in `-pie` and `-shared` modes.
 
 Targets have different opinions on whether dynamic relocations should be emitted.
 GNU ld x86 can disable the relocation with `-z dynamic-undefined-weak` (<https://sourceware.org/bugzilla/show_bug.cgi?id=19636>).
-I am on the fence of its usefullness.
-I think the condition "if there is at least one GOT-generating or PLT-generating relocation" is unnecessary complexity.
+GNU ld's condition "if there is at least one GOT-generating or PLT-generating relocation" is unnecessary complexity.
 
-ld.lld's approach is overall simpler.
+ld.lld [implemented `-z [no]dynamic-undefined-weak`](https://github.com/llvm/llvm-project/pull/143831) with the following effects:
+
+* Static `-no-pie`: no-op
+* Dynamic `-no-pie`: `nodynamic-undefined-weak` suppresses `GLOB_DAT`/`JUMP_SLOT`
+* Static `-pie`: `dynamic-undefined-weak` generates `ABS`/`GLOB_DAT`/`JUMP_SLOT`
+* Dynamic `-pie`: `nodynamic-undefined-weak` suppresses `ABS`/`GLOB_DAT`/`JUMP_SLOT`
+
 ld.lld's dynamic `-pie` behavior is usually different from GNU ld. Portable code should not depend on whether there is an `R_*_GLOB_DAT`.
 ld.lld's current behavior has inconsistency regarding absolute relocations and GOT-generating relocations.
 For the example below, ld.lld generates an `R_*_GLOB_DAT` but suppresses the absolute relocation.
@@ -325,12 +359,6 @@ void _start() {
     *address_of_weak_reference = 1;
 }
 ```
-
-I think we may consider keeping the absolute relocations to improve consistency.
-I do not know whether `-z dynamic-undefined-weak` may be of usefulness.
-
-About `-z {,no}dynamic-undefined-weak`, I am of the opinion that it is not useful.
-Its implication is much more complex than what the help message can explain, and users can unlikely use it correctly.
 
 ## ld.so
 
@@ -395,7 +423,26 @@ In ld64, a `weak_def_can_be_hidden` definition can override a `N_PEXT` definitio
 
 Weak binding happens in a flat namespace.
 
-A weak definition in the executable takes precedence over a strong definition in a dylib.
+A weak definition in the executable takes precedence over a strong definition in a dylib,
+but this only affects symbol resolution at bind time; a call within the dylib still uses the dylib's own definition.
+
+```c
+// shared.c
+#include <stdio.h>
+void f(void) { puts(__FILE_NAME__); }
+void g(void) { f(); }
+
+// main.c
+#include <stdio.h>
+[[gnu::weak]] void f(void) { puts(__FILE_NAME__); }
+void g(void);
+int main(void) {
+  f(); // prints "main.c"
+  g(); // prints "shared.c"
+  return 0;
+}
+```
+
 A weak definition in a dylib may lose to a strong definition in a subsequent dylib.
 
 ## PE/COFF

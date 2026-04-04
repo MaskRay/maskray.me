@@ -5,6 +5,8 @@ author: MaskRay
 tags: [assembler,llvm,linker]
 ---
 
+Updated in 2026-03.
+
 Alignment refers to the practice of placing data or code at memory addresses that are multiples of a specific value, typically a power of 2.
 This is typically done to meet the requirements of the programming language, ABI, or the underlying hardware.
 Misaligned memory accesses might be expensive or will cause traps on certain architectures.
@@ -59,8 +61,14 @@ Function alignment
 
 > An explicit alignment may be specified for a function. If not present, or if the alignment is set to zero, the alignment of the function is set by the target to whatever it feels convenient. If an explicit alignment is specified, the function is forced to have at least that much alignment. All alignments must be a power of 2.
 
-A backend can override this with a preferred function alignment (`STI->getTargetLowering()->getPrefFunctionAlignment()`), if that is larger than the specified align value.
+An explicit preferred alignment (`prefalign`) may also be specified for a function definition (must be a power of 2).
+Unlike `align`, it is a hint: the final alignment will generally land somewhere between the minimum and preferred values.
+If absent, the preferred alignment is determined in a target-specific way (`STI->getTargetLowering()->getPrefFunctionAlignment()`).
 (<https://discourse.llvm.org/t/rfc-enhancing-function-alignment-attributes/88019/3>)
+
+```llvm
+define void @f() align 2 prefalign(16) { ret void }
+```
 
 ---
 
@@ -97,23 +105,49 @@ v0:
 **Functions**
 For functions, `AsmPrinter::emitFunctionHeader` emits alignment directives based on the machine function's alignment settings.
 
+`MachineFunction::init()` sets the *minimum* alignment from the subtarget:
+
 ```cpp
 void MachineFunction::init() {
 ...
   Alignment = STI.getTargetLowering()->getMinFunctionAlignment();
-
-  // FIXME: Shouldn't use pref alignment if explicit alignment is set on F.
-  if (!F.hasOptSize())
-    Alignment = std::max(Alignment,
-                         STI.getTargetLowering()->getPrefFunctionAlignment());
 ```
 
-* The subtarget's minimum function alignment
-* If the function is not optimized for size (i.e. not compiled with `-Os` or `-Oz`), take the maximum of the minimum alignment and the preferred alignment.
-  For example, `X86TargetLowering` sets the preferred function alignment to 16.
+The *preferred* alignment is computed separately by `MachineFunction::getPreferredAlignment()`:
+
+```cpp
+Align MachineFunction::getPreferredAlignment() const {
+  Align PrefAlignment;
+  if (MaybeAlign A = F.getPreferredAlignment()) // explicit prefalign IR attr
+    PrefAlignment = *A;
+  else if (!F.hasOptSize())
+    PrefAlignment = STI.getTargetLowering()->getPrefFunctionAlignment();
+  else
+    PrefAlignment = Align(1);
+  return std::max(PrefAlignment, getAlignment());
+}
+```
+
+Here is a summary of the minimum and preferred function alignment values across major LLVM targets:
+
+| Target | MinAlign | PrefAlign | Notes |
+|--------|----------|-----------|-------|
+| X86 | (default) | 16 | All variants |
+| AArch64 | 4 | 8–64 | CPU-dependent: 8 (A64FX, NeoverseE1), 16 (most cores), 32 (ExynosM3), 64 (Ampere1B/C) |
+| ARM | 2 (Thumb) / 4 | 1–8 | Default 1; Exynos sets 8 for non-Thumb |
+| RISC-V | 2 (Zca) / 4 | 1 (default) | CPU-specific via TuneInfo |
+| PowerPC | 4 | 16 | PWR8+ only; older CPUs have no explicit pref |
+| SystemZ | 2 | 16 | |
+| LoongArch | 4 | 32 | |
+| MIPS | 4 (GP32) / 8 (GP64) | (not set) | |
+
+When the integrated assembler supports `.prefalign` and the preferred alignment exceeds the minimum, `AsmPrinter::emitFunctionHeader` emits `.p2align` for the minimum alignment followed by `.prefalign` with the preferred alignment and a function end symbol (<https://github.com/llvm/llvm-project/pull/184032>).
+When the minimum and preferred alignments are equal (e.g. due to `[[gnu::aligned(N)]]`), only `.p2align` is emitted.
+The behavior is the same regardless of `-ffunction-sections`.
 
 ```
 % echo 'void f(){} [[gnu::aligned(32)]] void g(){}' | clang --target=x86_64 -S -xc - -o -
+        .att_syntax
         .file   "-"
         .text
         .globl  f                               # -- Begin function f
@@ -127,7 +161,7 @@ f:                                      # @f
 g:                                      # @g
 ```
 
-The emitted `.p2align` directives omits the fill value argument: for code sections, this space is filled with no-op instructions.
+The emitted `.p2align` directives omit the fill value argument: for code sections, this space is filled with no-op instructions.
 
 ## Assembly representation
 
@@ -136,13 +170,29 @@ GNU Assembler supports multiple alignment directives:
 * `.p2align 3`: align to 2**3
 * `.balign 8`: align to 8
 * `.align 8`: this is identical to `.balign` on some targets and `.p2align` on the others.
+* `.prefalign N, end_sym, nop|fill_byte` (LLVM extension, if <https://github.com/llvm/llvm-project/pull/184032> is merged): pads the current location so that the code between the directive and `end_sym` starts at a body-size-dependent alignment. `N` must be a power of 2; `end_sym` must be a symbol defined in the same section. The fill operand is required: `nop` fills with target-appropriate NOP instructions, while an integer in [0, 255] fills with that byte value.
+
+  The alignment is determined by the *body size* (`end_sym` offset minus the padded start):
+
+  - body_size `< N`: align to `std::bit_ceil(body_size)`: the smallest power of 2 ≥ body_size
+  - body_size `≥ N`: align to `N`
+
+  In `ELFObjectWriter`, the section's `sh_addralign` is set to the maximum of regular alignment values and computed alignments over all `.prefalign` fragments. To also enforce a minimum alignment, emit a `.p2align` before `.prefalign`.
+
+  If the cache block size is 64 and the goal is to minimize the number of cache blocks a function spans, it suffices to align the function start to `min(64, std::bit_ceil(body_size))`. That's the minimum alignment that prevents an unnecessary boundary crossing.
+  For example, a 12-byte function aligned to min(64, bit_ceil(11)) = 16 is guaranteed not to cross a 64-byte boundary unnecessarily.
 
 Clang supports "direct object emission" (`clang -c` typically bypasses a separate assembler), the LLVMAsmPrinter directly uses the `MCObjectStreamer` API.
 This allows Clang to emit the machine code directly into the object file, bypassing the need to parse and interpret alignment directives and instructions from a text-based assembly file.
 
-These alignment directives has an optional third argument: the maximum number of bytes to skip.
+These alignment directives have an optional third argument: the maximum number of bytes to skip.
 If doing the alignment would require skipping more bytes than the specified maximum, the alignment is not done at all.
 GCC's `-falign-functions=m:n` utilizes this feature.
+
+Feature requests:
+
+- [gas: .prefalign directive for body-size-dependent function alignment](https://sourceware.org/bugzilla/show_bug.cgi?id=33943)
+- [GCC: Emit .prefalign for body-size-dependent function alignment](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124314)
 
 ## Object file format
 
@@ -274,12 +324,13 @@ Important considerations
 
 **Inefficiency with Small Functions**:
 Aligning small functions can be inefficient and may not be worth the overhead. To address this, GCC introduced `-flimit-function-alignment` in 2016.
-The option sets `.p2align` directive's max-skip operand to the estimated function size minus one.
+When the `-falign-functions` max-skip (the padding budget, defaulting to N-1) is greater than or equal to the function's code size, this option caps the `.p2align` max-skip operand to the function size minus one, preventing the NOP padding from exceeding the function body itself.
+GCC computes the function code size via `shorten_branches` in `final.cc`, which stores it in `crtl->max_insn_address`, then `assemble_start_function` in `varasm.cc` uses it to cap `max_skip`.
 
 ```
 % echo 'int add1(int a){return a+1;}' | gcc -O2 -S -fcf-protection=none -xc - -o - -falign-functions=16 | grep p2align
         .p2align 4
-% echo 'int add1(int a){return a+1;}' | gcc -O2 -S -fcf-protection=none -xc - -o - -falign-functions=16 -flimit-function-alignment | p2align
+% echo 'int add1(int a){return a+1;}' | gcc -O2 -S -fcf-protection=none -xc - -o - -falign-functions=16 -flimit-function-alignment | grep p2align
         .p2align 4,,3
 ```
 
@@ -303,9 +354,8 @@ Using `-falign-functions=32` can ensure the function always occupies a single ca
 
 ---
 
-LLVM notes: In `clang/lib/CodeGen/CodeGenModule.cpp`, `-falign-function=N` sets the alignment if a function does not have the `gnu::aligned` attribute.
-
-A hardware loop typically consistants of 3 parts:
+LLVM notes: In `clang/lib/CodeGen/CodeGenModule.cpp`, `-falign-functions=N` and `[[gnu::aligned(N)]]` now set **both** the minimum alignment and the preferred alignment (consistent with GCC).
+The separate `-fpreferred-function-alignment=N` option controls only the preferred alignment hint without affecting the minimum.
 
 A low-overhead loop (also called a zero-overhead loop) is a hardware-assisted looping mechanism found in many processor architectures, particularly digital signal processors (DSPs).
 The processor includes dedicated registers that store the loop start address, loop end address, and loop count.

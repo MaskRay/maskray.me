@@ -283,7 +283,7 @@ Recognizing these long-standing issues, a series of pivotal changes were underta
 
 * 2024: [[MC] Aligned bundling: remove special handling for RelaxAll](https://github.com/llvm/llvm-project/pull/95188) removed an optimization for NaCl in the [`mc-relax-all` mode](/blog/2024-04-27-understanding-clang-o0-size-increase-branch-displacement)
 * 2024: [[MC] Remove pending labels](https://github.com/llvm/llvm-project/commit/75006466296ed4b0f845cbbec4bf77c21de43b40)
-* 2024: [[MC] AttemptToFoldSymbolOffsetDifference: remove MCDummyFragment check. NFC](https://github.com/llvm/llvm-project/commit/8fa4fe1f995a9bc85666d63e84c094f9a09686bgn5)
+* 2024: [[MC] AttemptToFoldSymbolOffsetDifference: remove MCDummyFragment check. NFC](https://github.com/llvm/llvm-project/commit/8fa4fe1f995a9bc85666d63e84c094f9a09686)
 * 2025: Finally, [MC: Remove bundle alignment mode](https://github.com/llvm/llvm-project/pull/148781), after Derek Schuff agreed to drop NaCl support from LLVM.
 
 Should future features require a variant of bundle alignment, I firmly believe a much cleaner implementation is necessary.

@@ -363,8 +363,8 @@ I favor `%specifier(expr)` over `%specifier expr` because it provides clearer sc
 
 RISC-V favors `%specifier(expr)` but clings to `call sym@plt` for [legacy reasons](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/issues/98).
 
-AArch64 uses `:specifier:expr`, yet `R_AARCH64_PLT32` (`.word foo@plt - .`) and PAuth ABI (`.quad (g + 7)@AUTH(ia,0)`) cannot use `:` after data directives due to parsing ambiguity.
-<https://github.com/llvm/llvm-project/issues/132570>
+AArch64 uses `:specifier:expr`, yet PAuth ABI (`.quad (g + 7)@AUTH(ia,0)`) cannot use `:` after data directives due to parsing ambiguity.
+`R_AARCH64_PLT32`, `R_AARCH64_GOTPCREL32`, and `R_AARCH64_FUNCINIT` were fixed in [llvm/llvm-project#155776](https://github.com/llvm/llvm-project/pull/155776) to use `%pltpcrel(foo)` and `%gotpcrel(foo)` instead of the unofficial `foo@plt - .` / `foo@gotpcrel` forms.
 
 ## TLS symbols
 

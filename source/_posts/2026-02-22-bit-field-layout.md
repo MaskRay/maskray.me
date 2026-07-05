@@ -18,6 +18,8 @@ C++ is also terse — `[class.bit]p1`:
 
 > Allocation of bit-fields within a class object is implementation-defined. Alignment of bit-fields is implementation-defined. Bit-fields are packed into some addressable allocation unit.
 
+<!-- more -->
+
 The actual rules come from the platform ABI:
 
 - **Itanium ABI** — used on Linux, macOS, BSD, and most non-Windows platforms.

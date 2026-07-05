@@ -670,9 +670,14 @@ Each region is scheduled independently.
 The pre-RA scheduler uses `ScheduleDAGMILive`, which builds a dependency DAG over `MachineInstr`s and tracks register pressure using `RegisterPressureTracker`.
 Its `schedule()` method builds the DAG with register pressure information (`buildDAGWithRegPressure`), finds top and bottom roots, then calls `SchedImpl->pickNode(IsTopNode)` in a loop until the top and bottom frontiers meet.
 
-The default strategy is `GenericScheduler`, which performs bidirectional list scheduling.
+The default strategy is `GenericScheduler`, which supports both bottom-up and top-down list scheduling (generic targets default to bottom-up only).
 It maintains two `SchedBoundary` zones (top and bottom), each with its own ready queue.
 `pickNodeBidirectional` picks the best candidate from either zone using a hierarchical set of heuristics in `tryCandidate`: bias physical register defs toward their uses, avoid exceeding register pressure limits, avoid stalls on unbuffered resources, keep clustered nodes together, balance critical resource consumption, avoid serializing long latency chains, and fall back to original instruction order.
+
+The scheduling direction is asymmetric between the two passes, reflecting the pressure-versus-parallelism tradeoff.
+The pre-RA scheduler defaults to bottom-up for generic targets: scheduling a node once all its successors are placed models register pressure naturally, since each definition lands as late as possible — keeping live ranges short.
+The post-RA `PostGenericScheduler` defaults to top-down, mirroring the machine's issue order; register pressure no longer matters once physical registers are assigned, so its `tryCandidate` drops the pressure heuristics and ranks only resource stalls, clustering, resource balance, and latency.
+A subtarget overrides the direction through `overrideSchedPolicy`/`overridePostRASchedPolicy`; RISC-V opts into bidirectional pre-RA scheduling for a more balanced result, at higher compile-time cost.
 
 #### Scheduling models
 
@@ -751,6 +756,13 @@ TargetPassConfig::addMachinePasses
   // RISCV has createRISCVPreRAExpandPseudoPass.
   TargetPassConfig::addPreRegAlloc
   TargetPassConfig::addOptimizedRegAlloc
+    // Pre-RA instruction scheduling
+    addPass(&MachineSchedulerID)
+    TargetPassConfig::addRegAssignAndRewriteOptimized
+      createRegAllocPass
+      TargetPassConfig::addPreRewrite
+      addPass(&VirtRegRewriterID)
+    TargetPassConfig::addPostRewrite
   TargetPassConfig::addPostRegAlloc
   addPass(createPrologEpilogInserterPass());
   TargetPassConfig::addMachineLateOptimization

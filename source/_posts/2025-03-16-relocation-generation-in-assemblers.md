@@ -137,6 +137,20 @@ This is common in practice:
 * DWARF `.debug_*` sections contain labels referenced by other `.debug_*` sections.
 * `SHF_STRINGS` sections (`.rodata.str1.1`, `.debug_str`, `.debug_line_str`) have a label for each string literal.
 
+The conversion is a size-versus-readability tradeoff: referencing the section symbol keeps `.symtab` small, but relocations against named local symbols are easier to read.
+Both assemblers now expose a knob to control it: `clang -Wa,--reloc-section-sym={all,internal,none}` (LLVM integrated assembler) and the same option in GNU Assembler ([binutils commit](https://sourceware.org/cgit/binutils-gdb/commit/?id=eec25cabd2d004cfc2a9898b1ec93cbdef2fcd77)).
+
+* `all` (default) converts every eligible local symbol to its section symbol, maximizing `.symtab` savings.
+* `internal` converts only internal (temporary, e.g. `.L`) local symbols, so named local symbols keep their identity in relocations while anonymous labels can still be omitted.
+* `none` disables the conversion entirely; every local symbol is referenced directly.
+
+```
+# referencing named `local:` and temporary `.Ltemp:`, both in .text
+# all:      R_X86_64_PLT32  .text-0x3     R_X86_64_PLT32  .text-0x2
+# internal: R_X86_64_PLT32  local-0x4     R_X86_64_PLT32  .text-0x2
+# none:     R_X86_64_PLT32  local-0x4     R_X86_64_PLT32  .Ltemp-0x4
+```
+
 Not all relocations are eligible for this conversion.
 PLT-generating and GOT-generating relocations, for example, may require dynamic relocations where the symbol identity is significant, so they must reference the original symbol.
 In GNU Assembler, the backend hook `tc_fix_adjustable` controls which relocation types are excluded from the conversion.

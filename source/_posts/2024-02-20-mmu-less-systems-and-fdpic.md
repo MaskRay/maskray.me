@@ -12,11 +12,11 @@ Embedded systems often lack MMUs, relying on real-time operating systems (RTOS) 
 In these systems, the offset between the text and data segments is often not knwon at compile time.
 Therefore, a dedicated register is typically set to somewhere in the data segment and writable data is accessed relative to this register.
 
-Why is the offset not knwon at compile time?
+Why is the offset not known at compile time?
 There are primarily two reasons.
 
 First, eXecute in Place (XIP), where code resides in ROM while the data segment is copied to RAM.
-Therefore, the offset between the text and data segments is often not knwon at compile time.
+Therefore, the offset between the text and data segments is often not known at compile time.
 
 Second, all processes share the same address space without MMU.
 However, it is still desired for these processes to share text segments.

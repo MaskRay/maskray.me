@@ -455,13 +455,9 @@ The advantage compared with ELF is one fewer instruction in the call stub.
 
 ### MIPS
 
-I know really little about MIPS and cannot add much description.
-
-The normal code generation is like `-fno-plt`.
-MIPS did not use PLT at all until ~2008-2009.
-
-`-mno-abicalls`, which is only available for `-fno-pic`, can generate `j` and `jal` instructions.
-However, GNU ld has a warning `linking abicalls files with non-abicalls files`.
+MIPS did not have PLT support in the linker until 2008.
+Since 2008, `-mplt` is enabled by default for `-fno-pic` code.
+See [Toolchain notes on MIPS](/blog/2023-09-04-toolchain-notes-no-mips)
 
 ### PA-RISC
 

@@ -10,16 +10,25 @@ mathjax: true
 
 <!-- more -->
 
-A path $P=(u=v_0,v_1,\ldots,v_{k-1},v_k=v)$ in _G_ is a semidominator path if $v_i>v$ for $1\leq i<k$.
-The semidominator of vertex _v_ is defined as:
+Number the vertices by their pre-order (DFS) number and identify each vertex with that number.
+A path $P=(u=v_0,v_1,\ldots,v_{k-1},v_k=v)$ in _G_ is a semidominator path if every intermediate vertex has a larger number than the endpoint, i.e. $v_i>v$ for $1\leq i<k$ (the two endpoints $u$ and $v$ are unconstrained).
+The semidominator of _v_ is the smallest vertex that can reach _v_ through such a path:
 
 $$sdom(v) = \text{min}\{u | \text{there is a sdom path from } u \text{ to } v\}$$
 
 We compute `sdom[*]` using the reverse pre-order to utilize already-computed `sdom[*]` of larger indices.
-For each vertex `v`, enumerate its predecessor `u`, and the minimum pre-order number in the ancestor path of `u` provides a candidate `sdom[v]`.
-The following implementation employs a trick by merging `parent[]` into `uf[]`.
+For each vertex `v`, enumerate its predecessors `u` and consider an optimal semidominator path into `v`, ending in edge `(u, v)`:
+
+- `u < v`: Contributes candidate `u` (in the following code, `sdom[u] = u` at this moment); `u` cannot be an interior vertex of another semidominator path to `v`.
+- `u > v`: Let `w` be the interior vertex with the smallest number, so the infix `w -> ... -> u` has every vertex `>= w > v`.
+  At the moment the pre-order DFS discovered `w`, the rest of this infix was unvisited (white), since every such vertex has a larger number; by the white-path theorem `w` is thus a tree-ancestor of `u`.
+  The path splits into a semidominator path into `w`, then `w -> ... -> u`, then the edge `u -> v`, so its contribution is `sdom(w)`.
+  As `w` ranges over the tree-ancestors of `u` above `v`, this predecessor's best candidate is the minimum `sdom` among them — exactly what `eval` computes.
 
 With a simple implementation of eval-link, the time complexity is $O(E\log V)$.
+
+`eval(v, cur)` walks up the ancestor path of `v` in the DFS spanning tree and returns, among the ancestors with `dfn > cur` (those already linked in this step), the one with the minimum `sdom`.
+`uf[]` doubles as the union-find parent array (merged with `parent[]`), and `best[v]` carries the running minimum along the path.
 
 ```cpp
 #include <algorithm>
@@ -333,11 +342,44 @@ int main() {
 
 ## Dynamic dominators
 
-### Depth Based Search
+When the CFG changes by one edge at a time, the dominator tree can be updated incrementally instead of rebuilt.
+LLVM's `DominatorTree` does this for `insertEdge`/`deleteEdge`/`applyUpdates`, following _An Experimental Study of Dynamic Dominators_.
 
-After insertion of (x,y), v is affected iff
-depth(nca)+1 < depth(v) && exists path P from y to v s.t depth(v) <= depth(w)
-and d(v) is changed to nca
+Two facts keep the work local. Inserting an edge only makes dominance weaker, so some `idom(v)` move up toward the root. Deleting an edge only makes dominance stronger, so some `idom(v)` move down, or `v` becomes unreachable.
+Each tree node stores its depth, and the key query is `nca(a,b)`, the nearest common ancestor (nearest common dominator).
+
+### Insertion
+
+Insert `(x,y)`.
+If `y` was unreachable, run Semi-NCA on the region that just became reachable and attach the subtree under `x`.
+
+Otherwise `y` is reachable, handled by *depth based search*.
+Let `nca = nca(x,y)`. The new edge creates a path `root -> ... -> nca -> x -> y`, so a node reachable only below `nca` may now bypass its old dominator.
+`v` is *affected* iff `depth(nca)+1 < depth(v)` and there is a path `P` from `y` to `v` with `depth(w) >= depth(v)` for every `w` on `P`; then `idom(v)` becomes `nca`.
+
+The second condition wants a path from `y` to `v` whose minimum depth is at least `depth(v)` -- a widest-path problem, solved with a bucket-queue Dijkstra that pops the deepest node first.
+Starting from `y`, for a successor `s` of the current node at level `L`:
+
+- skip if `depth(s) <= depth(nca)+1` or `s` is already visited;
+- if `depth(s) <= L`, the bottleneck to `s` is `depth(s)`, so `s` is *affected*;
+- otherwise (`depth(s) > L`) `s` is unaffected for now, but keep expanding through it -- a deeper node can still lead back to an affected node at level `L`.
+
+Set `idom(v) = nca` for each affected `v`. Changing a node's idom cascades new depths through its subtree; unaffected descendants keep their idom but shift level.
+<https://reviews.llvm.org/D58349>
+
+### Deletion
+
+Delete `(x,y)` and let `nca = nca(x,y)`. If `y == nca` (i.e. `y` dominates `x`), nothing changes.
+Otherwise check whether `y` still has *proper support*: a still-reachable predecessor `p` with `nca(y,p) != y`, i.e. a surviving path keeping `y` dominated from above.
+
+- With proper support, only the subtree topped at `nca(x,y)` can change. Re-run Semi-NCA on the nodes below that level and reattach.
+- Without it, `y` and part of its subtree become unreachable. Erase the nodes that lost reachability, then rebuild the remaining affected subtree with Semi-NCA.
+
+So deletion still calls Semi-NCA, but only on a small local subgraph.
+
+### Rebuilding from scratch
+
+The incremental path gives up and reruns Semi-NCA on the whole graph when the affected region reaches the root, when the postdominator roots change, or, for a batch of `k` updates on `n` nodes, when `k` exceeds about `n/40`.
 
 ## Natural loops
 

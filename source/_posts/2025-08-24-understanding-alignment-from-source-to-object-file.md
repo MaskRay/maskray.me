@@ -5,7 +5,7 @@ author: MaskRay
 tags: [assembler,llvm,linker]
 ---
 
-Updated in 2026-03.
+Updated in 2026-04.
 
 Alignment refers to the practice of placing data or code at memory addresses that are multiples of a specific value, typically a power of 2.
 This is typically done to meet the requirements of the programming language, ABI, or the underlying hardware.
@@ -141,9 +141,9 @@ Here is a summary of the minimum and preferred function alignment values across 
 | LoongArch | 4 | 32 | |
 | MIPS | 4 (GP32) / 8 (GP64) | (not set) | |
 
-When the integrated assembler supports `.prefalign` and the preferred alignment exceeds the minimum, `AsmPrinter::emitFunctionHeader` emits `.p2align` for the minimum alignment followed by `.prefalign` with the preferred alignment and a function end symbol (<https://github.com/llvm/llvm-project/pull/184032>).
-When the minimum and preferred alignments are equal (e.g. due to `[[gnu::aligned(N)]]`), only `.p2align` is emitted.
-The behavior is the same regardless of `-ffunction-sections`.
+When the integrated assembler supports `.prefalign` and the function's preferred alignment exceeds its minimum alignment, `AsmPrinter::emitFunctionHeader` emits `.p2align` for the minimum alignment followed by `.prefalign` with the preferred alignment and a function end symbol (<https://github.com/llvm/llvm-project/pull/184032>).
+When the minimum and preferred alignments coincide, only `.p2align` is emitted: the `.prefalign` would either be redundant (if equal) or weaker (if the minimum exceeds the preferred), so it is suppressed.
+The behavior is the same regardless of `-ffunction-sections` (initially `.prefalign` required function sections because the section size carried the body length; symbol-based `.prefalign` removed that dependency).
 
 ```
 % echo 'void f(){} [[gnu::aligned(32)]] void g(){}' | clang --target=x86_64 -S -xc - -o -
@@ -151,17 +151,36 @@ The behavior is the same regardless of `-ffunction-sections`.
         .file   "-"
         .text
         .globl  f                               # -- Begin function f
-        .p2align        4
+        .prefalign      4, .Lfunc_end0, nop
         .type   f,@function
 f:                                      # @f
+...
+.Lfunc_end0:
+        .size   f, .Lfunc_end0-f
 ...
         .globl  g                               # -- Begin function g
         .p2align        5
         .type   g,@function
 g:                                      # @g
+...
+.Lfunc_end1:
+        .size   g, .Lfunc_end1-g
 ```
 
-The emitted `.p2align` directives omit the fill value argument: for code sections, this space is filled with no-op instructions.
+For `f`, the x86 minimum function alignment is 1 (no `.p2align` needed), while the preferred alignment is 16, so only `.prefalign 4, .Lfunc_end0, nop` is emitted; the final alignment depends on `f`'s body size. For `g`, `[[gnu::aligned(32)]]` lowers to both `align 32` and `prefalign(32)` in LLVM IR: `.p2align 5` establishes a 32-byte minimum, and `.prefalign 5, .Lfunc_end1, nop` is emitted alongside it because the check in `AsmPrinter::emitFunctionHeader` compares the machine function's backend minimum (1 on x86) against the preferred alignment (32).
+
+To see both directives side by side, the minimum alignment must be strictly less than the preferred alignment. That requires the two to be set independently at the IR level, e.g.:
+
+```
+% echo 'define void @g() align 8 prefalign(32) { ret void }' | llc -mtriple=x86_64 -o -
+...
+        .globl  g                               # -- Begin function g
+        .p2align        3
+        .prefalign      5, .Lfunc_end0, nop
+        .type   g,@function
+```
+
+The emitted `.p2align` directives omit the fill value argument: for code sections, this space is filled with no-op instructions. The `.prefalign` directive's fill operand is required; `nop` requests target-appropriate NOP instructions.
 
 ## Assembly representation
 
@@ -170,12 +189,12 @@ GNU Assembler supports multiple alignment directives:
 * `.p2align 3`: align to 2**3
 * `.balign 8`: align to 8
 * `.align 8`: this is identical to `.balign` on some targets and `.p2align` on the others.
-* `.prefalign N, end_sym, nop|fill_byte` (LLVM extension, if <https://github.com/llvm/llvm-project/pull/184032> is merged): pads the current location so that the code between the directive and `end_sym` starts at a body-size-dependent alignment. `N` must be a power of 2; `end_sym` must be a symbol defined in the same section. The fill operand is required: `nop` fills with target-appropriate NOP instructions, while an integer in [0, 255] fills with that byte value.
+* `.prefalign log2_align, end_sym, nop|fill_byte` (LLVM extension, <https://github.com/llvm/llvm-project/pull/184032>): pads the current location so that the code between the directive and `end_sym` starts at a body-size-dependent alignment. `log2_align` is a log2 exponent in [0, 63] (e.g. `4` means 16-byte alignment); `end_sym` must be a symbol defined in the same section. The fill operand is required: `nop` fills with target-appropriate NOP instructions, while an integer in [0, 255] fills with that byte value.
 
-  The alignment is determined by the *body size* (`end_sym` offset minus the padded start):
+  The alignment is determined by the *body size* (`end_sym` offset minus the padded start), letting `pref_align = 1 << log2_align`:
 
-  - body_size `< N`: align to `std::bit_ceil(body_size)`: the smallest power of 2 ≥ body_size
-  - body_size `≥ N`: align to `N`
+  - body_size `< pref_align`: align to `std::bit_ceil(body_size)`, the smallest power of 2 ≥ body_size
+  - body_size `≥ pref_align`: align to `pref_align`
 
   In `ELFObjectWriter`, the section's `sh_addralign` is set to the maximum of regular alignment values and computed alignments over all `.prefalign` fragments. To also enforce a minimum alignment, emit a `.p2align` before `.prefalign`.
 

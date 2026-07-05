@@ -69,8 +69,11 @@ Local branch (feature)     PR branch (pr/feature)
 
 Reviewers see clean diffs between C1 and C2, even though the underlying commits were rewritten.
 
-When a rebase is detected (`git merge-base` with main/master changed), the new PR commit is created as a merge commit with the new merge-base as the second parent.
-GitHub displays these as "condensed" merges, preserving the diff view for reviewers.
+When `git merge-base origin/main feature` has moved since the previous push, `prs push` splits the update into two commits on `pr/feature`: a "Rebase onto main" merge commit whose tree is the old patch re-applied onto the new upstream (computed via `git merge-tree --write-tree`), followed by a regular commit carrying the functional change.
+The first commit's first-parent diff is the pure upstream delta; the second's is the pure functional delta, so `git format-patch -1 <amend>` yields a clean patch reviewers can cherry-pick.
+GitHub's PR-level file-diff is also clean, because `git merge-base origin/main pr/feature` resolves to the new upstream commit via the merge commit's second parent.
+
+If the rebase itself required manual conflict resolution, the 3-way merge that reconstructs "old patch on new upstream" fails too. `prs push` then falls back to a single combined merge commit. Running `prs push` right after `git rebase` (before amending) keeps the split clean.
 
 ## Usage
 
@@ -116,4 +119,5 @@ I owe an apology to folks who receive `users/MaskRay/feature` branches (if they 
 
 Additionally, spr embeds a PR URL in commit messages (e.g., `Pull Request: https://github.com/llvm/llvm-project/pull/150816`), which can cause downstream forks to add unwanted backlinks to the original PR.
 
-If I need stacked pull requests, I will probably use pr-shadow with the base patch and just rebase stacked ones - it's unclear how spr handles stacked PRs.
+spr handles stacks by keeping every in-flight commit on local `main`, creating one PR per commit whose base is a synthetic branch (tree = `main` + all lower commits in the stack), and tracking commit identity across rebases via the `Pull Request:` trailer.
+This depends on pushing base branches to the upstream repository — the property pr-shadow explicitly avoids — so stacks in pr-shadow are not first-class. For now I apply pr-shadow to the base patch and rebase-and-force-push dependent patches.

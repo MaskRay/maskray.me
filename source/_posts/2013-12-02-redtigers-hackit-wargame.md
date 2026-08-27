@@ -1,7 +1,7 @@
 ---
 layout: post
 title: RedTigers Hackit Wargame - Level 1 ~ Level 7
-author: MaskRay
+permalink: 2013-12-02-redtigers-hackit-wargame
 tags: [security, wargame]
 ---
 

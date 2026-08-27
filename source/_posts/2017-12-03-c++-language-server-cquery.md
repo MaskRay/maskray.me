@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 使用cquery：C++ language server
-author: MaskRay
+permalink: 2017-12-03-c++-language-server-cquery
 tags: [emacs, lsp]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 用udev自動掛載usb設備
-author: MaskRay
+permalink: 2011-08-12-udev-automount-usb
 tags: [udev, usb]
 ---
 

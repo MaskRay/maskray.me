@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Sacramento游记
-author: MaskRay
+permalink: 2025-12-07-sacramento-travelogue
 tags: [travel]
 ---
 

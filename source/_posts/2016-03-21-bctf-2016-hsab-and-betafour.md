@@ -1,7 +1,7 @@
 ---
 layout: post
 title: BCTF 2016 hsab及BetaFour命題報告
-author: MaskRay
+permalink: 2016-03-21-bctf-2016-hsab-and-betafour
 tags: [ctf, bctf, docker, binary]
 ---
 

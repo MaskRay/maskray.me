@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 使用Double-array trie優化Proxy auto-config
-author: MaskRay
+permalink: 2013-02-21-double-array-trie-pac
 tags: [data structure, coffee script]
 ---
 

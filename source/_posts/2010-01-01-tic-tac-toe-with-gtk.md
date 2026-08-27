@@ -1,7 +1,7 @@
 ---
 layout: post
 title: GTK+ tic-tac-toe（井字棋）
-author: MaskRay
+permalink: 2010-01-01-tic-tac-toe-with-gtk
 tags: [game, gtk]
 ---
 

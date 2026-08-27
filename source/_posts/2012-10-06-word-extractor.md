@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 自然語言處理之詞語抽取
-author: MaskRay
+permalink: 2012-10-06-word-extractor
 tags: [algorithm, data structure, stringology, nlp]
 ---
 

@@ -1,12 +1,12 @@
 ---
 layout: post
 title: Maintaining shadow branches for GitHub PRs
-author: MaskRay
+permalink: 2026-01-22-maintaining-shadow-branches-for-github-prs
 tags: [git,github]
 ---
 
 I've created [pr-shadow](https://github.com/MaskRay/pr-shadow) with vibe coding, a tool that maintains a shadow branch for GitHub pull requests (PR) that never requires force-pushing.
-This addresses pain points I described in [Reflections on LLVM's switch to GitHub pull requests#Patch evolution](/blog/2023-09-09-reflections-on-llvm-switch-to-github-pull-requests#patch-evolution).
+This addresses pain points I described in [Reflections on LLVM's switch to GitHub pull requests#Patch evolution](/blog/reflections-on-llvm-switch-to-github-pull-requests#patch-evolution).
 
 <!-- more -->
 
@@ -115,7 +115,7 @@ However, spr pushes user branches to the main repository rather than a personal 
 While necessary for stacked pull requests, this approach is discouraged for single PRs as it clutters the upstream repository.
 pr-shadow avoids this by pushing to your fork by default.
 
-I owe an apology to folks who receive `users/MaskRay/feature` branches (if they use the default `fetch = +refs/heads/*:refs/remotes/origin/*` to receive user branches). I had been abusing spr for a long time after [LLVM's GitHub transition](/blog/2023-09-09-reflections-on-llvm-switch-to-github-pull-requests#patch-evolution) to avoid unnecessary rebuilds when switching between the main branch and PR branches.
+I owe an apology to folks who receive `users/MaskRay/feature` branches (if they use the default `fetch = +refs/heads/*:refs/remotes/origin/*` to receive user branches). I had been abusing spr for a long time after [LLVM's GitHub transition](/blog/reflections-on-llvm-switch-to-github-pull-requests#patch-evolution) to avoid unnecessary rebuilds when switching between the main branch and PR branches.
 
 Additionally, spr embeds a PR URL in commit messages (e.g., `Pull Request: https://github.com/llvm/llvm-project/pull/150816`), which can cause downstream forks to add unwanted backlinks to the original PR.
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: SECUINSIDE CTF Quals 2013雜記
-author: MaskRay
+permalink: 2013-05-26-secuinside-ctf-quals-2013
 tags: [security, ctf]
 ---
 

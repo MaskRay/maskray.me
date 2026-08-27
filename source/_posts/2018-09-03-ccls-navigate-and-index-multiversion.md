@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "$ccls/navigate和index.multiVersion"
-author: MaskRay
+permalink: 2018-09-03-ccls-navigate-and-index-multiversion
 tags: [c++, emacs, lsp]
 ---
 

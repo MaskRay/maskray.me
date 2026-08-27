@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 無需每日掃碼的IRC版微信和QQ：wechatircd、webqqircd
-author: MaskRay
+permalink: 2016-07-06-wechatircd-webqqircd-without-scanning-qrcode-daily
 tags: [irc,wechat,qq,wechatircd,webqqircd,javascript,python]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: DEFCON 21——我的奮鬥
-author: MaskRay
+permalink: 2013-08-05-defcon-21-my-struggle
 tags: [security, defcon]
 ---
 

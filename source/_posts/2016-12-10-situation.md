@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 近況
-author: MaskRay
+permalink: 2016-12-10-situation
 tags: [summary]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: C++ language server ccls一周年
-author: MaskRay
+permalink: 2019-04-01-ccls-one-year
 tags: [c++, emacs, lsp]
 ---
 

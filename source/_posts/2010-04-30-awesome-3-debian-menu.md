@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Awesome 3 debian menu
-author: MaskRay
+permalink: 2010-04-30-awesome-3-debian-menu
 tags: [awesome, desktop]
 ---
 

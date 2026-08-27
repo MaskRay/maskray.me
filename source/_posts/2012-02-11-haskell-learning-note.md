@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Haskell學習筆記
-author: MaskRay
+permalink: 2012-02-11-haskell-learning-note
 tags: [haskell, ocaml]
 ---
 

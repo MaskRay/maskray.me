@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 脫離chroot的枷鎖
-author: MaskRay
+permalink: 2011-08-16-break-out-of-chroot
 tags: [linux, chroot]
 ---
 

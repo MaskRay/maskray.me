@@ -1,7 +1,7 @@
 ---
 layout: post
 title: ML编译器Caml Featherweight——抽象机器
-author: MaskRay
+permalink: 2014-12-24-caml-compiler-abstract-machine
 tags: [compiler, ocaml, ml]
 ---
 

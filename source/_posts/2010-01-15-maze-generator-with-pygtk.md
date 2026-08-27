@@ -1,7 +1,7 @@
 ---
 layout: post
 title: PyGTK迷宮生成器mazer
-author: MaskRay
+permalink: 2010-01-15-maze-generator-with-pygtk
 tags: [algorithm, maze, python]
 ---
 

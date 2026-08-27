@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 第二屆青少年開發者大會
-author: MaskRay
+permalink: 2013-07-27-adolescent-developer-conference-2013
 tags: [adc, event]
 ---
 

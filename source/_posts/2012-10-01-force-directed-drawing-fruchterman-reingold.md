@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Force-directed算法(1)——Fruchterman-Reingold
-author: MaskRay
+permalink: 2012-10-01-force-directed-drawing-fruchterman-reingold
 tags: [algorithm, graph drawing]
 mathjax: true
 ---

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: When QOI meets XZ
-author: MaskRay
+permalink: 2024-04-23-when-qoi-meets-xz
 tags: [image,compression,xz]
 ---
 

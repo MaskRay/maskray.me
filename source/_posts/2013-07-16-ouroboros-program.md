@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Ouroborus Program - quine-relay 分析
-author: MaskRay
+permalink: 2013-07-16-ouroboros-program
 tags: [ruby]
 ---
 

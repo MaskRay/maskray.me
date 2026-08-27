@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Js_of_ocaml和Emscripten
-author: MaskRay
+permalink: 2014-12-27-js-of-ocaml-and-emscripten
 tags: [ocaml, emscripten]
 ---
 

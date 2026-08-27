@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 江蘇信安競賽初賽工作組記事
-author: MaskRay
+permalink: 2014-11-24-jsxajs-workgroup
 tags: [contest, security, ctf]
 ---
 

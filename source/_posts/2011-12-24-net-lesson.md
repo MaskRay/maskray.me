@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 網絡學堂feeds2mail
-author: MaskRay
+permalink: 2011-12-24-net-lesson
 tags: [ruby]
 ---
 

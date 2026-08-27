@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 約瑟夫問題的兩個O(log n)解法
-author: MaskRay
+permalink: 2013-08-27-josephus-problem-two-log-n-solutions
 tags: [algorithm, josephus problem]
 ---
 

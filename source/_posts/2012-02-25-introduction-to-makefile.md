@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Makefile介紹
-author: MaskRay
+permalink: 2012-02-25-introduction-to-makefile
 tags: [makefile]
 ---
 

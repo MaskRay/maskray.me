@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 用DocPad構建靜態網站
-author: MaskRay
+permalink: 2012-11-14-build-static-website-with-docpad
 tags: [website, node.js]
 ---
 

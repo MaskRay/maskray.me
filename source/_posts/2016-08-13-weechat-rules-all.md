@@ -1,7 +1,7 @@
 ---
 layout: post
 title: WeeChat操作各種聊天軟件
-author: MaskRay
+permalink: 2016-08-13-weechat-rules-all
 tags: [irc]
 ---
 

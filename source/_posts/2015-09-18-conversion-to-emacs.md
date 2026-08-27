@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 皈依Emacs
-author: MaskRay
+permalink: 2015-09-18-conversion-to-emacs
 tags: [emacs,vim]
 ---
 

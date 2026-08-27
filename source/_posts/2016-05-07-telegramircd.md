@@ -1,7 +1,7 @@
 ---
 layout: post
 title: telegramircd——用IRC客戶端控制Telegram
-author: MaskRay
+permalink: 2016-05-07-telegramircd
 tags: [irc,telegram,telegramircd,python,javascript]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: OverTheWire - Natas Wargame - Level 0 ~ Level 17
-author: MaskRay
+permalink: 2013-08-11-overthewire-natas-wargame
 tags: [security, wargame]
 ---
 

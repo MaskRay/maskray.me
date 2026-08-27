@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Ko-Aluru suffix array construction algorithm
-author: MaskRay
+permalink: 2014-06-08-ko-aluru-suffix-array-construction
 tags: [algorithm, data structure, stringology, suffix array]
 mathjax: true
 ---

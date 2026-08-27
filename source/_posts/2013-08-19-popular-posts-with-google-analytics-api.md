@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 用Google Analytics API爲靜態站點實現“閱讀最多文章”功能
-author: MaskRay
+permalink: 2013-08-19-popular-posts-with-google-analytics-api
 tags: [website, web analytics, node.js]
 ---
 

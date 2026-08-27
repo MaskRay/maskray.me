@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Dancing Links+Algorithm X求解數獨
-author: MaskRay
+permalink: 2009-11-23-sudoku-with-dancing-links-and-algorithm-x
 tags: [algorithm, oi, puzzle]
 ---
 

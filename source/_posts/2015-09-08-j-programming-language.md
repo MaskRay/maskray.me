@@ -1,7 +1,7 @@
 ---
 layout: post
 title: J語言初探
-author: MaskRay
+permalink: 2015-09-08-j-programming-language
 tags: [j]
 mathjax: true
 ---

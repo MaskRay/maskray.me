@@ -1,7 +1,7 @@
 ---
 layout: post
 title: GTK+黑白棋reversi
-author: MaskRay
+permalink: 2010-01-02-reversi-with-gtk
 tags: [game, gtk]
 ---
 

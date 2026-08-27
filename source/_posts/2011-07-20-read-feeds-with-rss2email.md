@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 用rss2email閱讀feeds
-author: MaskRay
+permalink: 2011-07-20-read-feeds-with-rss2email
 tags: [email, feeds]
 ---
 

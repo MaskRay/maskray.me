@@ -1,7 +1,7 @@
 ---
 layout: post
 title: LeetCode solutions
-author: MaskRay
+permalink: 2014-06-29-leetcode-solutions
 tags: [algorithm, leetcode]
 mathjax: true
 ---

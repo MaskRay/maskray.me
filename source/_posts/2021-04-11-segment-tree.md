@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Segment tree
-author: MaskRay
+permalink: 2021-04-11-segment-tree
 tags: [algorithm,data structure]
 ---
 

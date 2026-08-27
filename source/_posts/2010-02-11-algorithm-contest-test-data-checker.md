@@ -1,7 +1,7 @@
 ---
 layout: post
 title: checker
-author: MaskRay
+permalink: 2010-02-11-algorithm-contest-test-data-checker
 tags: [algorithm, oi]
 ---
 

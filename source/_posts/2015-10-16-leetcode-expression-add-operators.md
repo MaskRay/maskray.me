@@ -1,7 +1,7 @@
 ---
 layout: post
 title: LeetCode Expression Add Operators：SLR(1)、meet-in-the-middle及其他
-author: MaskRay
+permalink: 2015-10-16-leetcode-expression-add-operators
 tags: [algorithm, leetcode]
 mathjax: true
 ---

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Android微信數據導出
-author: MaskRay
+permalink: 2014-10-14-wechat-export
 tags: [wechat, forensics]
 ---
 

@@ -1,8 +1,8 @@
 ---
 layout: post
 title: 基於 mutt+offlineimap+notmuch+inotifywait 的個人郵件系統
+permalink: 2012-11-13-personal-mail-system
 description: 個人使用的基於mutt+offlineimap的郵件系統，使用notmuch檢索郵件，inotify實現新郵件提醒
-author: MaskRay
 tags: [email, mutt, offlineimap, notmuch, inotify]
 ---
 

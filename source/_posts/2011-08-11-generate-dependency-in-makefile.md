@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 在Makefile中自動生成依賴
-author: MaskRay
+permalink: 2011-08-11-generate-dependency-in-makefile
 tags: [makefile]
 ---
 

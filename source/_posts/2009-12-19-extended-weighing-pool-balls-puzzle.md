@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 稱球問題擴展——根據當前已知信息選擇最優稱量方案
-author: MaskRay
+permalink: 2009-12-19-extended-weighing-pool-balls-puzzle
 tags: [algorithm, oi, puzzle]
 ---
 

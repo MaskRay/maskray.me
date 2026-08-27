@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 用Perl的正則表達式分析csv文件
-author: MaskRay
+permalink: 2011-08-13-parse-csv-in-perl
 tags: [perl, regex, csv]
 ---
 

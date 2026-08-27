@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 偃師——finite automaton生成工具
-author: MaskRay
+permalink: 2016-06-11-yanshi-automaton-generator
 tags: [automaton,parser generator,regular expression,yanshi]
 ---
 

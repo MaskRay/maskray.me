@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 終端模擬器下使用雙倍寬度多色Emoji字體
-author: MaskRay
+permalink: 2016-03-13-terminal-emulator-fullwidth-color-emoji
 tags: [terminal,vte,emoji]
 ---
 

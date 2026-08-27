@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 八數碼
-author: MaskRay
+permalink: 2011-12-18-eight-puzzle
 tags: [algorithm, haskell, search]
 ---
 

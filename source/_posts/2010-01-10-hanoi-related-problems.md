@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 三柱漢諾塔相關擴展問題
-author: MaskRay
+permalink: 2010-01-10-hanoi-related-problems
 mathjax: true
 tags: [algorithm, hanoi]
 ---

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Emacs helm-kythe与Haskell交叉引用
-author: MaskRay
+permalink: 2017-07-01-emacs-helm-kythe-and-haskell-xrefs
 tags: [emacs,haskell,kythe]
 ---
 

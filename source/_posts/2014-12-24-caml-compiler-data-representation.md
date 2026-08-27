@@ -1,7 +1,7 @@
 ---
 layout: post
 title: ML编译器Caml Featherweight——数据表示
-author: MaskRay
+permalink: 2014-12-24-caml-compiler-data-representation
 tags: [compiler, ocaml, ml]
 ---
 

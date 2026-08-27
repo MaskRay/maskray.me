@@ -1,7 +1,7 @@
 ---
 layout: post
 title: D-Link路由器後門註記
-author: MaskRay
+permalink: 2013-11-30-dlink-backdoor
 tags: [reverse engineering]
 ---
 

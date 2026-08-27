@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Recent LLVM hash table improvements
-author: MaskRay
+permalink: 2026-06-07-recent-llvm-hash-table-improvements
 tags: [llvm,data-structures,performance]
 ---
 
@@ -13,6 +13,7 @@ LLVM has several hash tables. They used quadratic probing with in-band sentinel 
 - `SmallPtrSet` (replacement for `std::unordered_set<T *>`): hard-coded `-1` (empty) and `-2` (tombstone).
 - `StringMap` (replacement for `std::unordered_map<std::string, V>`)
   + `StringSet`: implemented using `StringMap`
+- `FoldingSet` (uniquing/hash-consing container, not a general map)
 
 For the open-addressed `DenseMap` and `SmallPtrSet`, pointers, references, and iterators are invalidated by insert.
 `StringMap` is different: each entry lives in a heap-allocated `StringMapEntry<V>` node, so entry pointers survive grow.
@@ -25,6 +26,7 @@ Recently,
 - DenseMap has also retired its empty-key sentinel, leading to significant performance improvements.
   DenseMap with integer keys (`int`/`unsigned`/`size_t`) had `-1`/`-2` reserved — a footgun, now fixed.
 - StringMap got Algorithm R deletion too. Its entries are separately heap-allocated, so erase keeps entry pointers valid but invalidates iterators; erase-while-iterating moved to `remove_if`.
+- FoldingSet dropped chaining for linear probing plus Algorithm R; the intrusive next-in-bucket pointer became a cached 32-bit hash.
 
 <!-- more -->
 
@@ -160,6 +162,25 @@ That invalidation broke the erase-while-iterating idiom tombstones had supported
 No used-bit array: `StringMap` lacks the in-bucket key load that justified it on `DenseMap` — occupancy is a pointer-null test and the hash array already serves as the reject filter.
 A measured port helped find-miss but left find-hit flat, regressed iteration, and added a third array with no aggregate win.
 
+## FoldingSet
+
+`FoldingSet` is a uniquing container with intrusive nodes: you look up by `FoldingSetNodeID`, a profile of the node you are about to create, and allocate only on a miss, so equal objects collapse to one pointer.
+`ASTContext` has about 60 of them, one per canonical clang type kind; `SelectionDAG::CSEMap`, `ScalarEvolution::UniqueSCEVs`, and the attribute tables in `LLVMContextImpl` are the other heavy users.
+
+The old implementation was a chained hash table with the link inside the node: `FoldingSetNode` held a `void *NextInFoldingSetBucket`, the last node pointed back at its bucket with the low bit set (so `RemoveNode` never needed the hash), and the load factor reached 2.0.
+Every probe step was a dependent load into a separately allocated node, and the default `Equals` re-runs `Profile()`, so each collision paid a full profile recomputation.
+
+[#218190](https://github.com/llvm/llvm-project/pull/218190) switches to linear probing over a flat array of node pointers, Algorithm R deletion, and a 0.75 load factor.
+The freed-up next pointer becomes a cached 32-bit hash, which is where most of the win comes from: `FoldingSetNode` halves to 4 bytes, a probe rejects on a 32-bit compare instead of a `Profile()` call, and growth becomes a pointer shuffle instead of re-profiling every node.
+`RemoveNode` now needs the hash, so 0 is reserved to mark "in no set", replacing the old null next pointer.
+`InsertPos` becomes the hash rather than a bucket address, so it survives intervening insertions.
+Unlike `StringMap`, no parallel hash array is needed — the node already had a word to spare.
+
+Erase invalidates iterators but not node pointers. [#218179](https://github.com/llvm/llvm-project/pull/218179) landed that contract first, so `DebugEpochBase` could catch stale iterators before the algorithm changed underneath them. Design discussion in [this RFC](https://discourse.llvm.org/t/rfc-modernizing-llvms-foldingset-open-addressing-with-swiss-table-and-algorithm-r/91637).
+
+CTMark geomean ([compare](https://llvm-compile-time-tracker.com/compare.php?from=319e7316b63a41830b0c9cef7371ef83ea257c0d&to=b3411b89c3afaffb0a102169065b317e7a322d96&stat=instructions:u)) is **-0.43%** instructions on stage1-O3 and **-0.20%** on stage2-O3; the clang build itself gains **-1.64%** instructions and **-1.44%** wall time, since the C++ frontend leans on `ASTContext` uniquing in a way C benchmarks do not (kimwitu++ -1.12%, tramp3d-v4 -0.61%, sqlite3 -0.18%).
+`max-rss` is the cost: capping the load factor at 0.75 instead of 2.0 gives ~2.7x more bucket slots per node, which the 4 bytes saved per node do not pay back (+0.53% stage1-O3 geomean, +3.57% on tramp3d-v4).
+
 ## Rejected alternatives
 
 Prototyped, measured, rejected on `SmallPtrSet` and `DenseMap`.
@@ -179,6 +200,7 @@ Measurements on AMD Zen 4 and Apple M4 ruled it out: the used-bit version is fas
 - Swiss Table family implementations are poor at small keys. If deletion performance does not matter, you don't need its heavy implementation.
 - `SmallPtrSet` was the dry run that de-risked `DenseMap`: same algorithm, smaller blast radius, same conclusion on rejected alternatives.
 - Tombstones aren't free at 4% erase — they slow down insertion.
+- An intrusive chain link is not free real estate. Spending that word on a cached hash instead buys a probe filter and a `Profile()`-free rehash.
 
 ## Aggregate compile-time impact
 
@@ -188,6 +210,8 @@ The squash bundles the whole series so the tracker sees the cumulative effect as
 - SmallPtrSet/DenseMap: #197637, #198982, #199369, #200540, #200595, #201281, #201742
 - IR/Analysis `getTombstoneKey`/`getEmptyKey` cleanups: #200958, #201997
 - StringMap: #202103, #202237, #202272, #202520
+
+FoldingSet (#218190) landed much later and is not in this squash; its numbers are in its own section above.
 
 Aggregate measurements from [llvm-compile-time-tracker.com](https://llvm-compile-time-tracker.com/):
 

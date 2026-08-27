@@ -1,7 +1,7 @@
 ---
 layout: post
 title: “1001夜”學生節線上解謎活動1001/key題解
-author: MaskRay
+permalink: 2013-12-23-student-festival-1001-puzzle-elf
 tags: [student festival puzzle, reverse engineering]
 ---
 

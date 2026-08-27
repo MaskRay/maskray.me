@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Benchmarking compression programs
-author: MaskRay
+permalink: 2025-08-31-benchmarking-compression-programs
 tags: [compression,ruby]
 ---
 

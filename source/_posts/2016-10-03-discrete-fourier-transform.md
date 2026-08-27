@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 整係數Discrete Fourier transform技巧
-author: MaskRay
+permalink: 2016-10-03-discrete-fourier-transform
 tags: [algorithm, math, floating point]
 mathjax: true
 ---

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 使用Suricata進行IDS/IPS
-author: MaskRay
+permalink: 2013-07-26-ids-ips-with-suricata
 tags: [security, suricata]
 ---
 

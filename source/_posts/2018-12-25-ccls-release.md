@@ -1,7 +1,7 @@
 ---
 layout: post
 title: ccls 0.20181225 release
-author: MaskRay
+permalink: 2018-12-25-ccls-release
 tags: [ccls]
 ---
 

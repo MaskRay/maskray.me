@@ -1,7 +1,7 @@
 ---
 layout: post
 title: kth element in a subarray
-author: MaskRay
+permalink: 2022-12-26-kth-element-in-a-subarray
 tags: [algorithm]
 ---
 

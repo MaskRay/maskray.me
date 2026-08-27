@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Trend Micro Codinsanity 2014參賽記
-author: MaskRay
+permalink: 2014-08-19-trendmicro-codinsanity-2014
 tags: [trendmicro, contest, codinsanity, expect]
 ---
 

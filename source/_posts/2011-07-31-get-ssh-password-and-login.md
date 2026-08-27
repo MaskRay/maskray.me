@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 自動獲取SSH密碼並登錄
-author: MaskRay
+permalink: 2011-07-31-get-ssh-password-and-login
 tags: [ssh, expect]
 ---
 

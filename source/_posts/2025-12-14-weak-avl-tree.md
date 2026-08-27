@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Weak AVL Tree
-author: MaskRay
+permalink: 2025-12-14-weak-avl-tree
 tags: [algorithm,data structure]
 ---
 

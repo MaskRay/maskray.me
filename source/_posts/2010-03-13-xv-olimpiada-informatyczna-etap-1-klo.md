@@ -1,7 +1,7 @@
 ---
 layout: post
 title: XV Olimpiada Informatyczna - Etap 1 - klo
-author: MaskRay
+permalink: 2010-03-13-xv-olimpiada-informatyczna-etap-1-klo
 tags: [algorithm, oi, data structure]
 ---
 

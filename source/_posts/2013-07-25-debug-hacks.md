@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 《Debug Hacks》和調試技巧
-author: MaskRay
+permalink: 2013-07-25-debug-hacks
 tags: [debug, c, review]
 ---
 

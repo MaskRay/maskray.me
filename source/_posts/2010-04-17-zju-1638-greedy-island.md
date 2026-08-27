@@ -1,7 +1,7 @@
 ---
 layout: post
 title: ZJU 1638. Greedy Island
-author: MaskRay
+permalink: 2010-04-17-zju-1638-greedy-island
 tags: [algorithm, oi, oj]
 ---
 

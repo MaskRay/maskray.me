@@ -1,7 +1,7 @@
 ---
 layout: post
 title: USACO JAN10 Gold
-author: MaskRay
+permalink: 2010-01-22-usaco-jan10-gold-solutions
 tags: [algorithm, oi]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 80分鐘8語言
-author: MaskRay
+permalink: 2012-06-30-eight-languages-in-eighty-minutes
 tags: [haskell]
 ---
 

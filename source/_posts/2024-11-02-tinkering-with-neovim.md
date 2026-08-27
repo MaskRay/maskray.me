@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Tinkering with Neovim
-author: MaskRay
+permalink: 2024-11-02-tinkering-with-neovim
 tags: [emacs,neovim]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 給xbindkeys添加key sequence支持
-author: MaskRay
+permalink: 2012-03-14-xbindkeys-key-sequence
 tags: [xbindkeys, scheme]
 ---
 

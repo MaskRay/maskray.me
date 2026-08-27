@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Cyber Grand Challenge及DEFCON 24 CTF決賽介紹
-author: MaskRay
+permalink: 2016-09-24-cgc-defcon-ctf-presentation
 tags: [security, cgc, defcon, ctf, contest, presentation]
 ---
 

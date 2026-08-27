@@ -1,7 +1,7 @@
 ---
 layout: post
 title: NOIP 2004 數字遊戲（蟲食算）
-author: MaskRay
+permalink: 2009-11-23-noip-2004-cryptarithmetic
 tags: [algorithm, oi, noip]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Recent lld/ELF performance improvements
-author: MaskRay
+permalink: 2026-04-12-recent-lld-elf-performance-improvements
 tags: [linker,llvm,performance]
 ---
 

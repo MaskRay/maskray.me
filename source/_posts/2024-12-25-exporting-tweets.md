@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Exporting Tweets
-author: MaskRay
+permalink: 2024-12-25-exporting-tweets
 tags: [website]
 ---
 

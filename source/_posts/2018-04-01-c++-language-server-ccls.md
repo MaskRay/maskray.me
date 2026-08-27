@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "ccls: a fork of the C++ language server cquery"
-author: MaskRay
+permalink: 2018-04-01-c++-language-server-ccls
 tags: [c++, emacs, lsp]
 ---
 

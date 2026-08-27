@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 二叉樹遍歷算法總結
-author: MaskRay
+permalink: 2014-08-31-binary-tree-traversal
 tags: [algorithm, tree, traversal]
 ---
 

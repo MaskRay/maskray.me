@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Real World CTF 2018 ccls-fringe命題報告
-author: MaskRay
+permalink: 2018-07-31-real-world-ctf-2018-ccls-fringe
 tags: [ccls, ctf, forensics]
 ---
 

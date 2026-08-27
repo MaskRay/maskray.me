@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 完美迷宮生成算法
-author: MaskRay
+permalink: 2012-11-02-perfect-maze-generation
 tags: [algorithm, maze]
 ---
 

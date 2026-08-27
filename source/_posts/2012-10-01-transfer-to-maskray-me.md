@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 域名遷移至maskray.me
-author: MaskRay
+permalink: 2012-10-01-transfer-to-maskray-me
 tags: [website]
 ---
 

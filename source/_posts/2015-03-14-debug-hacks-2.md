@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 調試技巧2
-author: MaskRay
+permalink: 2015-03-14-debug-hacks-2
 tags: [debug, c]
 ---
 

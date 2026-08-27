@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Buffalo WZR-600DHP OpenWrt使用Comcast的IPv6
-author: MaskRay
+permalink: 2016-12-10-buffalo-wzr-600dhp-openwrt-comcast-ipv6
 tags: [router, openwrt, network]
 ---
 

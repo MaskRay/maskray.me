@@ -1,7 +1,7 @@
 ---
 layout: post
 title: ccls and LSP Semantic Tokens
-author: MaskRay
+permalink: 2024-10-20-ccls-and-lsp-semantic-tokens
 tags: [ccls]
 ---
 

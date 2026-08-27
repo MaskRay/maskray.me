@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Hackerrank FP Compilers题目
-author: MaskRay
+permalink: 2014-11-06-hackerrank-fp-compilers
 tags: [hackerrank,fp,ocaml]
 ---
 

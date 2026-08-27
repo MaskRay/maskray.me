@@ -1,8 +1,8 @@
 ---
 layout: post
 title: 我的xmonad配置
+permalink: 2011-11-30-xmonad-config
 description: 一個不錯的Xmonad配置，帶有xmonad-contrib一些模塊的介紹。
-author: MaskRay
 tags: [haskell, xmonad, desktop]
 ---
 

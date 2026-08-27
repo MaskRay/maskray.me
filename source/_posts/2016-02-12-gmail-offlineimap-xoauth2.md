@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Gmail的OfflineIMAP XOAUTH2認證
-author: MaskRay
+permalink: 2016-02-12-gmail-offlineimap-xoauth2
 tags: [email]
 ---
 

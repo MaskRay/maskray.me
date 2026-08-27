@@ -1,7 +1,7 @@
 ---
 layout: post
 title: ML編譯器Caml Featherweight——設計
-author: MaskRay
+permalink: 2014-12-24-caml-compiler-design
 tags: [compiler, ocaml, ml]
 mathjax: true
 ---

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: ML編譯器Caml Featherweight——pretty printer
-author: MaskRay
+permalink: 2014-12-24-caml-compiler-others
 tags: [compiler, ocaml, ml]
 mathjax: true
 ---

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "String index structure: suffix automaton"
-author: MaskRay
+permalink: 2013-05-10-suffix-automaton
 tags: [data structure, stringology, suffix automaton]
 mathjax: true
 ---

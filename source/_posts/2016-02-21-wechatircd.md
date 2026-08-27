@@ -1,7 +1,7 @@
 ---
 layout: post
 title: wechatircd——用IRC客戶端控制微信網頁版
-author: MaskRay
+permalink: 2016-02-21-wechatircd
 tags: [irc,wechat,wechatircd,python,javascript]
 ---
 

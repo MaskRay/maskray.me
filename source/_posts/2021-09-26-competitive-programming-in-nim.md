@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Competitive programming in Nim
-author: MaskRay
+permalink: 2021-09-26-competitive-programming-in-nim
 tags: [nim]
 ---
 
@@ -194,7 +194,7 @@ SpaceBeforeParens: Never
 ```
 
 To further decrease the source code length, we can shorten function, variables, and type names.
-See [C minifier with Clang](/blog/2022-10-09-c-minifier-with-clang).
+See [C minifier with Clang](/blog/c-minifier-with-clang).
 
 ## Old notes
 

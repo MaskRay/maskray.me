@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 用Pike's VM實現的非回溯正則表達式引擎
-author: MaskRay
+permalink: 2012-11-05-regex-engine
 tags: [algorithm, regex]
 ---
 

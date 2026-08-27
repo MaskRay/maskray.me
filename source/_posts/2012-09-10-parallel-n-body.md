@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 並行N-body模擬
-author: MaskRay
+permalink: 2012-09-10-parallel-n-body
 tags: [parallel, algorithm, n-body]
 ---
 

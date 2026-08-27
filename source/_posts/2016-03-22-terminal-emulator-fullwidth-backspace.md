@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 終端模擬器下寬字符退格
-author: MaskRay
+permalink: 2016-03-22-terminal-emulator-fullwidth-backspace
 tags: [terminal,vte,unicode]
 ---
 

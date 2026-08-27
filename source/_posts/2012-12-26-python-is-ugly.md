@@ -1,8 +1,8 @@
 ---
 layout: post
 title: Python is ugly
+permalink: 2012-12-26-python-is-ugly
 description: Python很多地方設計的很醜陋，比如false values，浪費single quotes，one-expression lambda等
-author: MaskRay
 tags: [python]
 ---
 

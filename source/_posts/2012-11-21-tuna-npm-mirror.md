@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 建立清華大學Node Packaged Modules鏡像
-author: MaskRay
+permalink: 2012-11-21-tuna-npm-mirror
 tags: [npm, node.js, mirror]
 ---
 

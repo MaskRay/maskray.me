@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 用Expect連接無線網絡
-author: MaskRay
+permalink: 2011-07-10-expect-connect-wireless
 tags: [expect, network]
 ---
 

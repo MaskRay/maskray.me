@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 計算所有後綴的排名
-author: MaskRay
+permalink: 2012-01-08-ranking-suffixes
 tags: [haskell]
 ---
 

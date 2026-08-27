@@ -1,7 +1,7 @@
 ---
 layout: post
 title: genkernel
-author: MaskRay
+permalink: 2010-05-24-genkernel-in-gentoo
 tags: [kernel, gentoo]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: cquery USR優化和分層diff
-author: MaskRay
+permalink: 2018-01-14-cquery-usr-and-hierarchical-diff
 tags: [emacs, lsp]
 ---
 

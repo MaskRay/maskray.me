@@ -1,7 +1,7 @@
 ---
 layout: post
 title: E-mail文化拾趣
-author: MaskRay
+permalink: 2013-08-15-interesting-bits-of-email-culture
 tags: [hacker culture,email]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Build glibc with LLD 13
-author: MaskRay
+permalink: 2021-09-05-build-glibc-with-lld
 tags: [binutils,glibc,linker,llvm]
 ---
 
@@ -212,7 +212,7 @@ Finally, this issue is fixed by [`elf: Replace a --defsym trick with an object f
 glibc's static non-pie and static pie modes take different code paths for `R_*_IRELATIVE` relocation resolving.
 Its static pie mode expects that `__rela_iplt_start==__rela_iplt_end`, which is satisfied if ld leaves the symbols zero.
 Before 13.0.0, ld.lld defined `__rela_iplt_start`/`__rela_iplt_end` for `-pie` and therefore broke glibc loader's assumption, causing a program to crash.
-See [GNU indirect function](/blog/2021-01-18-gnu-indirect-function) for details about the encapsulation symbols.
+See [GNU indirect function](/blog/gnu-indirect-function) for details about the encapsulation symbols.
 
 I made good arguments but were dismissed by "Ulrich and I designed/implemented IFUNC on x86 and for x86. I consider x86 implementation of IFUC as the gold standard."
 
@@ -308,7 +308,7 @@ GLIBC_2.2.5 {
 
 Anyway, I conceded and implemented [`[ELF] Combine foo@v1 and foo with the same versionId if both are defined`](https://reviews.llvm.org/D107235) not to cause confusion for the unfortunate corner case.
 
-See the discussion on defined non-default version symbols on [All about symbol versioning](/blog/2020-11-26-all-about-symbol-versioning).
+See the discussion on defined non-default version symbols on [All about symbol versioning](/blog/all-about-symbol-versioning).
 
 In addition, I implemented [`[ELF] Apply version script patterns to non-default version symbols`](https://reviews.llvm.org/D107234) so that `local:` works correctly.
 

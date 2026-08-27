@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Haskell實現的Splay樹
-author: MaskRay
+permalink: 2011-09-28-splay-tree-in-haskell
 tags: [haskell, data structure]
 ---
 

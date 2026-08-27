@@ -1,7 +1,7 @@
 ---
 layout: post
 title: C++ exit-time destructors
-author: MaskRay
+permalink: 2024-03-17-c++-exit-time-destructors
 tags: [c++]
 ---
 

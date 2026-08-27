@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 從ASC'14到ISC'15——我的超算競賽生涯謝幕
-author: MaskRay
+permalink: 2015-10-07-asc14-to-isc15-curtain-call-of-my-cluster-competition
 tags: [contest,asc,isc,hpc]
 ---
 

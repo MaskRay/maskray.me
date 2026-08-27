@@ -1,7 +1,7 @@
 ---
 layout: post
 title: webqqircd——用IRC客戶端控制WebQQ
-author: MaskRay
+permalink: 2016-04-11-webqqircd
 tags: [irc,qq,webqqircd,python,javascript]
 ---
 

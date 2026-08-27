@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 8門編程語言的設計思考
-author: MaskRay
+permalink: 2012-07-21-design-thinking-of-eight-programming-languages
 tags: [haskell]
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 我是這樣使用微信的——wechatircd最近更新
-author: MaskRay
+permalink: 2017-02-19-how-i-use-wechat-recent-updates-of-wechatircd
 tags: [irc,wechat,wechatircd,python,javascript]
 ---
 

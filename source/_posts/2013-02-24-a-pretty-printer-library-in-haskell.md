@@ -1,7 +1,7 @@
 ---
 layout: post
 title: TUNA技術沙龍及A Pretty Printer Library in Haskell
-author: MaskRay
+permalink: 2013-02-24-a-pretty-printer-library-in-haskell
 tags: [haskell, presentation]
 ---
 

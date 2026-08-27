@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 用Makefile搭建博客
-author: MaskRay
+permalink: 2011-07-12-blogging-with-makefile
 tags: [makefile, shell, website]
 ---
 

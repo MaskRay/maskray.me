@@ -1,7 +1,7 @@
 ---
 layout: post
 title: ML编译器Caml Featherweight——垃圾收集
-author: MaskRay
+permalink: 2014-12-24-caml-compiler-garbage-collection
 tags: [compiler, ocaml, ml]
 ---
 

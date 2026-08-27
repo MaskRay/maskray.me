@@ -1,7 +1,7 @@
 ---
 layout: post
 title: cquery最近改動與libclang.so一字節補丁
-author: MaskRay
+permalink: 2017-12-25-cquery-updates-and-libclang-one-byte-patch
 tags: [emacs, lsp]
 ---
 

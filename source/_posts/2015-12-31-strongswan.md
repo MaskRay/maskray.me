@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 支持Android、iOS 9內置IPSec客戶端的strongSwan 5.3.5配置
-author: MaskRay
+permalink: 2015-12-31-strongswan
 tags: [vpn,ipsec]
 ---
 

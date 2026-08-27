@@ -1,7 +1,7 @@
 ---
 layout: post
 title: gcc中sqrt實現
-author: MaskRay
+permalink: 2012-04-07-sqrt-in-gcc
 tags: [c++, haskell]
 ---
 

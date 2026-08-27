@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 指定dynamic linker以使用高版本GCC
-author: MaskRay
+permalink: 2015-09-29-specify-dynamic-linker-to-use-higher-version-gcc
 tags: [binary,elf,ld,gcc]
 ---
 

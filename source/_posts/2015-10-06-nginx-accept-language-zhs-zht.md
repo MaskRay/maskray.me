@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Nginx根據Accept-Language的簡繁體支持
-author: MaskRay
+permalink: 2015-10-06-nginx-accept-language-zhs-zht
 tags: [website,nginx]
 ---
 

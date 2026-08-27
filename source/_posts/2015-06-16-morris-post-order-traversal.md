@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 常數空間Invert Binary Tree與仿Morris法後序遍歷
-author: MaskRay
+permalink: 2015-06-16-morris-post-order-traversal
 tags: [algorithm, tree, traversal, leetcode]
 ---
 

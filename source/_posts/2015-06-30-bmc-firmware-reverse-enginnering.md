@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 一次服務器BMC固件逆向經歷
-author: MaskRay
+permalink: 2015-06-30-bmc-firmware-reverse-enginnering
 tags: [firmware,bmc,reverse engineering]
 ---
 

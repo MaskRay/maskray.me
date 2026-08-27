@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Real World CTF 2018 rwext5命題報告
-author: MaskRay
+permalink: 2018-12-09-real-world-ctf-2018-rwext5
 tags: [ext4, ctf, forensics]
 ---
 

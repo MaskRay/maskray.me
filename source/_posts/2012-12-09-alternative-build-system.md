@@ -1,8 +1,8 @@
 ---
 layout: post
 title: 異於Make的另一種構建系統
+permalink: 2012-12-09-alternative-build-system
 description: 不同於傳統構建系統(如Make)的系統，很多源文件修改場合下時間複雜度低於線性
-author: MaskRay
 tags: [makefile, build system]
 ---
 

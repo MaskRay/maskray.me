@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 2018-09-09 ccls最近更新
-author: MaskRay
+permalink: 2018-09-09-ccls-update
 tags: [c++, emacs, lsp]
 ---
 

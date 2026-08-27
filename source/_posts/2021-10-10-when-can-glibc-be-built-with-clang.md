@@ -1,7 +1,7 @@
 ---
 layout: post
 title: When can glibc be built with Clang?
-author: MaskRay
+permalink: 2021-10-10-when-can-glibc-be-built-with-clang
 tags: [clang,glibc]
 ---
 
@@ -87,7 +87,7 @@ In some places it is definitely a code smell problem. Function attributes are ad
 In Clang, `#pragma redefine_extname` is converted to an asm label and shares code with the asm label implementation.
 
 Clang before 12.0.0 had an issue that a built-in function ignored the asm label.
-I fixed it and made some notes on <https://maskray.me/blog/2020-10-15-intra-call-and-libc-symbol-renaming> (TODO: translate it into English).
+I fixed it and made some notes on <https://maskray.me/blog/intra-call-and-libc-symbol-renaming> (TODO: translate it into English).
 
 ```c
 typedef unsigned long size_t;

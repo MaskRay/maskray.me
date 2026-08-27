@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Evil--在Emacs中模擬Vim
-author: MaskRay
+permalink: 2012-06-02-emulate-vim-in-emacs
 tags: [emacs]
 ---
 

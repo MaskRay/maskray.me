@@ -1,7 +1,7 @@
 ---
 layout: post
 title: jq实现原理——字节码
-author: MaskRay
+permalink: 2015-05-02-jq-internals-bytecode
 tags: [jq,compiler]
 mathjax: true
 ---

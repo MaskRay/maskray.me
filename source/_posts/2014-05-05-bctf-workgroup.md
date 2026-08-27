@@ -1,7 +1,7 @@
 ---
 layout: post
 title: BCTF工作組記事
-author: MaskRay
+permalink: 2014-05-05-bctf-workgroup
 tags: [contest, security, ctf, bctf]
 ---
 

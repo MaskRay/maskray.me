@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Migrating comments to giscus
-author: MaskRay
+permalink: 2025-02-17-migrating-comments-to-giscus
 tags: [website]
 ---
 

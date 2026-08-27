@@ -1,7 +1,7 @@
 ---
 layout: post
 title: r2con 2017 r2cLEMENCy
-author: MaskRay
+permalink: 2017-09-09-r2con-r2clemency
 tags: [security, defcon, ctf, contest, radare2]
 ---
 
